@@ -48,7 +48,7 @@ function idx(headers: string[], name: string): number {
 // -----------------------
 // Summary: rankings
 // -----------------------
-export async function getRankings(sortMetric: SortMetric): Promise<StockReturnSummaryRow[]> {
+export async function getRankings(sortMetric: SortMetric = "ret_1y_pct"): Promise<StockReturnSummaryRow[]> {
     const filePath = path.join(DATA_DIR, "summary", "stock_return_summary.csv");
     const text = await fs.readFile(filePath, "utf-8");
     const { headers, rows } = parseCSV(text);
@@ -70,7 +70,6 @@ export async function getRankings(sortMetric: SortMetric): Promise<StockReturnSu
 
             mid_2y: toNumberOrNull(r[it("mid_2y")]),
             ret_2y_pct: toNumberOrNull(r[it("ret_2y_pct")]),
-            current_close: parseFloat(r[it("current_close")]) || 0,
             pe_mid_used: toNumberOrNull(r[it("pe_mid_used")]),
             current_pe: toNumberOrNull(r[it("current_pe")]),
             current_pe_gap_pct: toNumberOrNull(r[it("current_pe_gap_pct")]),

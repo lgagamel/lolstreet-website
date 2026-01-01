@@ -27,7 +27,6 @@ export default function StockDashboard({ series, finance, forecast }: Props) {
         pe: true,
         eps: false,
         revenue: false,
-        revenue: false,
         netIncome: false,
         cashFlow: false,
     });
