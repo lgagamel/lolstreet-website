@@ -149,8 +149,46 @@ export default function RankingsTable({ rows }: Props) {
                 </div>
             </div>
 
-            {/* Table */}
-            <div className="overflow-x-visible">
+            {/* Mobile Card View (Visible on small screens) */}
+            <div className="block sm:hidden divide-y divide-gray-100 dark:divide-gray-800">
+                {top10.map((r, i) => (
+                    <div key={r.ticker} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                        <div className="flex justify-between items-start mb-3">
+                            <div className="flex items-center gap-3">
+                                <span className="text-xs font-mono text-gray-400">#{String(r.originalRank).padStart(2, '0')}</span>
+                                <Link href={`/stock/${r.ticker}`}>
+                                    <span className="text-lg font-bold text-gray-900 dark:text-white hover:text-indigo-600 transition-colors">
+                                        {r.ticker}
+                                    </span>
+                                </Link>
+                            </div>
+                            {fmtPrice(r.current_close)}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
+                            <div className="flex justify-between">
+                                <span className="text-gray-500 text-xs">EPS Growth</span>
+                                {fmtPct(r.eps_yoy_growth_avg_last4q_pct)}
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-gray-500 text-xs text-right">PE Ratio</span>
+                                <span className="font-mono text-gray-700 dark:text-gray-300">{r.current_pe ? `${r.current_pe.toFixed(1)}x` : '-'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-gray-500 text-xs">PE Gap</span>
+                                {fmtPeGap(r.current_pe_gap_pct)}
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-gray-500 text-xs text-right">1Y Return</span>
+                                {fmtPct(r.ret_1y_pct)}
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            {/* Desktop Table View (Hidden on mobile) */}
+            <div className="hidden sm:block overflow-x-visible">
                 <table className="min-w-full">
                     <thead>
                         <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">

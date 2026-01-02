@@ -114,7 +114,7 @@ export default async function Page(props: PageProps) {
                             const currentPE = currentRow?.pe_ratio;
 
                             return (
-                                <div className="mt-3 flex flex-wrap items-center gap-4 text-xs">
+                                <div className="mt-3 grid grid-cols-1 xs:grid-cols-2 sm:flex sm:flex-wrap items-center gap-4 text-xs">
                                     {currentPE && Number.isFinite(currentPE) && (
                                         <>
                                             <div className="flex items-center gap-2 bg-violet-50 dark:bg-violet-900/20 px-3 py-1.5 rounded-lg border border-violet-100 dark:border-violet-900/30">
