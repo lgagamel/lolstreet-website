@@ -26,8 +26,6 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
         visible: boolean;
         x: number;
         y: number;
-        x: number;
-        y: number;
         data?: PriceBandPoint;
         newsData?: NewsEvent;
         financeData?: StockFinanceRow;
@@ -376,13 +374,13 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
                             .attr("stroke", "#a855f7")
                             .attr("stroke-width", 1.5)
                             .attr("stroke-dasharray", "3 3")
-                            .transition().duration(400).attr("y2", yScale(pricePoint.close));
+                            .transition().duration(400).attr("y2", yScale(pricePoint.close!));
 
                         // 2. Animate Highlight Circle
                         setTimeout(() => {
                             mainG.append("circle")
                                 .attr("class", "news-price-highlight")
-                                .attr("cx", xScale(date)).attr("cy", yScale(pricePoint.close))
+                                .attr("cx", xScale(date)).attr("cy", yScale(pricePoint.close!))
                                 .attr("r", 0)
                                 .attr("fill", "#a855f7")
                                 .attr("stroke", "white")

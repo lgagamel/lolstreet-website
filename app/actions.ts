@@ -87,6 +87,7 @@ export interface TimeMachineResult {
     currentStockPrice: number;
     currentValue: number;
     percentChange: number;
+    sharesBought: number;
     seriesData: { date: string; value: number }[];
 }
 
