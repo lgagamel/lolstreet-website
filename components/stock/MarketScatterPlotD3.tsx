@@ -11,6 +11,7 @@ interface MarketScatterPlotD3Props {
 
 export default function MarketScatterPlotD3({ data }: MarketScatterPlotD3Props) {
     const containerRef = useRef<HTMLDivElement>(null);
+    const resetZoomRef = useRef<() => void>(() => { });
     const router = useRouter();
     const [tooltip, setTooltip] = useState<{
         visible: boolean;
@@ -51,57 +52,62 @@ export default function MarketScatterPlotD3({ data }: MarketScatterPlotD3Props) 
             .append("g")
             .attr("transform", `translate(${margin.left},${margin.top})`);
 
+        // --- Clip Path ---
+        const clipId = "scatter-clip";
+        svg.append("defs").append("clipPath")
+            .attr("id", clipId)
+            .append("rect")
+            .attr("width", width)
+            .attr("height", height);
+
         // Scales
         // X: EPS Growth
         const xExtent = d3.extent(validData, d => d.eps_yoy_growth_avg_last4q_pct as number) as [number, number];
         const xScale = d3.scaleLinear()
-            .domain([Math.min(-50, xExtent[0]), Math.max(50, xExtent[1])]) // Ensure some baseline range
+            .domain([Math.min(-50, xExtent[0]), Math.max(50, xExtent[1])])
             .range([0, width])
             .nice();
 
         // Y: Current PE
         const yExtent = d3.extent(validData, d => d.current_pe as number) as [number, number];
         const yScale = d3.scaleLinear()
-            .domain([0, Math.max(50, yExtent[1])]) // Ensure baseline
+            .domain([0, Math.max(50, yExtent[1])])
             .range([height, 0])
             .nice();
 
-        // Gridlines
-        const makeXGridlines = () => d3.axisBottom(xScale).ticks(10);
-        const makeYGridlines = () => d3.axisLeft(yScale).ticks(10);
+        // Helpers
+        const makeXGridlines = (scale: d3.ScaleLinear<number, number>) => d3.axisBottom(scale).ticks(10);
+        const makeYGridlines = (scale: d3.ScaleLinear<number, number>) => d3.axisLeft(scale).ticks(10);
+        const makeXAxis = (scale: d3.ScaleLinear<number, number>) => d3.axisBottom(scale).tickFormat(d => `${d}%`);
+        const makeYAxis = (scale: d3.ScaleLinear<number, number>) => d3.axisLeft(scale).tickFormat(d => `${d}x`);
 
-        svg.append("g")
-            .attr("class", "grid opacity-10 dark:opacity-20")
+        // Gridlines
+        const gXGrid = svg.append("g")
+            .attr("class", "x-grid opacity-10 dark:opacity-20")
             .attr("transform", `translate(0,${height})`)
-            .call(makeXGridlines()
+            .call(makeXGridlines(xScale)
                 .tickSize(-height)
                 .tickFormat(() => "")
             )
             .style("stroke-dasharray", "3,3");
 
-        svg.append("g")
-            .attr("class", "grid opacity-10 dark:opacity-20")
-            .call(makeYGridlines()
+        const gYGrid = svg.append("g")
+            .attr("class", "y-grid opacity-10 dark:opacity-20")
+            .call(makeYGridlines(yScale)
                 .tickSize(-width)
                 .tickFormat(() => "")
             )
             .style("stroke-dasharray", "3,3");
 
         // Axis
-        const xAxis = d3.axisBottom(xScale)
-            .tickFormat(d => `${d}%`);
-
-        const yAxis = d3.axisLeft(yScale)
-            .tickFormat(d => `${d}x`);
-
-        svg.append("g")
+        const gXAxis = svg.append("g")
+            .attr("class", "x-axis text-gray-500 dark:text-gray-400 font-mono text-xs")
             .attr("transform", `translate(0,${height})`)
-            .attr("class", "text-gray-500 dark:text-gray-400 font-mono text-xs")
-            .call(xAxis);
+            .call(makeXAxis(xScale));
 
-        svg.append("g")
-            .attr("class", "text-gray-500 dark:text-gray-400 font-mono text-xs")
-            .call(yAxis);
+        const gYAxis = svg.append("g")
+            .attr("class", "y-axis text-gray-500 dark:text-gray-400 font-mono text-xs")
+            .call(makeYAxis(yScale));
 
         // Labels
         svg.append("text")
@@ -119,8 +125,7 @@ export default function MarketScatterPlotD3({ data }: MarketScatterPlotD3Props) 
             .attr("class", "fill-gray-600 dark:fill-gray-300 text-sm font-semibold")
             .text("Current PE Ratio");
 
-        // Quadrant Labels (Optional but helpful "Wow" factor)
-        // High Growth, Low PE (Bottom Right) -> GARP / Undervalued?
+        // Quadrant Label (Static)
         svg.append("text")
             .attr("x", width - 10)
             .attr("y", height - 10)
@@ -128,34 +133,27 @@ export default function MarketScatterPlotD3({ data }: MarketScatterPlotD3Props) 
             .attr("class", "fill-green-500/20 text-4xl font-black uppercase pointer-events-none select-none")
             .text("Value & Growth");
 
-        // Scatter Points
-        const circles = svg.selectAll("circle")
+        // Scatter Points Group (Clipped)
+        const pointsG = svg.append("g")
+            .attr("clip-path", `url(#${clipId})`);
+
+        const circles = pointsG.selectAll("circle")
             .data(validData)
             .enter()
             .append("circle")
             .attr("cx", d => xScale(d.eps_yoy_growth_avg_last4q_pct as number))
             .attr("cy", d => yScale(d.current_pe as number))
             .attr("r", 6)
-            .attr("class", "cursor-pointer transition-all duration-300 hover:r-8")
-            .attr("fill", d => {
-                const growth = d.eps_yoy_growth_avg_last4q_pct || 0;
-                // Color scale based on growth? Or just a nice constant?
-                // Let's use a dynamic color: High Growth + Low PE = Green, Low Growth + High PE = Red
-                // Simple version: just use a nice brand color
-                return "#6366f1"; // Indigo-500
-            })
+            .attr("class", "cursor-pointer transition-colors duration-200") // Removed transition-all to allow smooth zoom
+            .attr("fill", "#6366f1") // Indigo-500
             .attr("fill-opacity", 0.7)
             .attr("stroke", "#ffffff")
             .attr("stroke-width", 1.5);
 
-        // Interactions
+        // Tooltip Interactions
         circles
             .on("mouseover", (event, d) => {
-                d3.select(event.currentTarget)
-                    .transition().duration(200)
-                    .attr("r", 10)
-                    .attr("fill-opacity", 1);
-
+                d3.select(event.currentTarget).attr("r", 10).attr("fill-opacity", 1);
                 const rect = containerRef.current?.getBoundingClientRect();
                 if (rect) {
                     setTooltip({
@@ -168,61 +166,68 @@ export default function MarketScatterPlotD3({ data }: MarketScatterPlotD3Props) 
                                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                                     <span className="text-gray-400">Price:</span>
                                     <span className="font-mono text-right">${d.current_close.toFixed(2)}</span>
-
                                     <span className="text-gray-400">PE Ratio:</span>
                                     <span className="font-mono text-right font-semibold text-indigo-400">{d.current_pe?.toFixed(1)}x</span>
-
                                     <span className="text-gray-400">EPS Growth:</span>
                                     <span className={`font-mono text-right font-semibold ${(d.eps_yoy_growth_avg_last4q_pct || 0) > 0 ? "text-green-400" : "text-red-400"}`}>
                                         {(d.eps_yoy_growth_avg_last4q_pct || 0) > 0 ? "+" : ""}{d.eps_yoy_growth_avg_last4q_pct?.toFixed(1)}%
                                     </span>
                                 </div>
-                                <span className="text-[10px] text-gray-500 mt-1 italic">Click for details</span>
                             </div>
                         )
                     });
                 }
             })
             .on("mouseout", (event) => {
-                d3.select(event.currentTarget)
-                    .transition().duration(200)
-                    .attr("r", 6)
-                    .attr("fill-opacity", 0.7);
+                d3.select(event.currentTarget).attr("r", 6).attr("fill-opacity", 0.7);
                 setTooltip(null);
             })
             .on("click", (event, d) => {
                 router.push(`/stock/${d.ticker}`);
             });
 
-        // Zoom/Pan
+        // Zoom Behavior
         const zoom = d3.zoom<SVGSVGElement, unknown>()
-            .scaleExtent([0.5, 5])
+            .scaleExtent([0.5, 10])
             .extent([[0, 0], [width, height]])
             .on("zoom", (event) => {
                 const newXScale = event.transform.rescaleX(xScale);
                 const newYScale = event.transform.rescaleY(yScale);
 
-                // Update axes
-                svg.select<SVGGElement>(".grid").call(makeXGridlines().scale(newXScale).tickSize(-height).tickFormat(() => "")); // Update X grid if needed, complex with selection. 
-                // Simpler zoom for scatter: just update positions and axes
+                // Update Axes
+                gXAxis.call(makeXAxis(newXScale));
+                gYAxis.call(makeYAxis(newYScale));
 
-                (svg.select(".text-gray-500.dark\\:text-gray-400.font-mono.text-xs") as d3.Selection<SVGGElement, unknown, null, undefined>).call(xAxis.scale(newXScale));
-                // Note: handling multiple selects properly for axes is key, I used broad selectors above, might need refinement.
+                // Update Gridlines
+                gXGrid.call(makeXGridlines(newXScale).tickSize(-height).tickFormat(() => ""));
+                gYGrid.call(makeYGridlines(newYScale).tickSize(-width).tickFormat(() => ""));
 
-                // Let's re-select axes by index or class more carefully if we want zoom.
-                // For MVP scatter plot, often basic hover is enough. User didn't strictly ask for zoom, but "Wow" factor.
-                // Let's implement standard transform zoom.
-
-                svg.selectAll("circle")
+                // Update Circles
+                circles
                     .attr("cx", (d: any) => newXScale(d.eps_yoy_growth_avg_last4q_pct))
                     .attr("cy", (d: any) => newYScale(d.current_pe));
-
-                // Update axes (need specific selection)
-                // We'll skip complex axis updates for this iteration to avoid visual bugs without finding selectors.
-                // Let's just stick to basic interactive plot.
             });
 
-        // svg.call(zoom); // Disable zoom for now to keep it clean and stable unless requested.
+        // Attach Zoom to a transparent rect catching events
+        // (Better than attaching to SVG root because it handles margin offset better)
+        const zoomRect = svg.append("rect")
+            .attr("width", width)
+            .attr("height", height)
+            .style("fill", "none")
+            .style("pointer-events", "all")
+            .lower(); // Send to back so circles can still take mouseover?
+        // Actually, if we want circles to be clickable, they need to be above interact rect.
+        // But zoomRect captures drags on empty space.
+
+        // Strategy: Attach zoom to the `svg` selection (root), but we are in a group `g` with margins.
+        // It's often easiest to attach zoom to the parent SVG DOM node.
+        const svgNode = d3.select(containerRef.current).select("svg");
+        svgNode.call(zoom as any);
+
+        // Expose Reset
+        resetZoomRef.current = () => {
+            svgNode.transition().duration(750).call(zoom.transform as any, d3.zoomIdentity);
+        };
 
     }, [validData, router]);
 
@@ -233,10 +238,18 @@ export default function MarketScatterPlotD3({ data }: MarketScatterPlotD3Props) 
                     <span className="w-2 h-6 bg-indigo-500 rounded-full"></span>
                     Market Valuation Map
                 </h2>
-                <div className="text-xs text-gray-500 flex gap-4">
-                    <div className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-                        <span>Individual Stock</span>
+                <div className="flex gap-4 items-center">
+                    <button
+                        onClick={() => resetZoomRef.current()}
+                        className="text-xs px-3 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded transition-colors"
+                    >
+                        Reset Zoom
+                    </button>
+                    <div className="text-xs text-gray-500 flex gap-4">
+                        <div className="flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                            <span>Individual Stock</span>
+                        </div>
                     </div>
                 </div>
             </div>

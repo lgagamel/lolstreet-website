@@ -38,7 +38,7 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
         // Fields: operatingCashflow, capitalExpenditures (negative), freeCashFlow
         const vals = data.flatMap(d => [
             d.operatingCashflow || 0,
-            -(d.capitalExpenditures || 0), // visualize as negative
+            d.capitalExpenditures || 0,
             d.freeCashFlow || 0
         ]);
         const yMax = d3.max(vals) || 0;
@@ -67,6 +67,17 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
             svgRef.current = svg;
 
             const defs = svg.append("defs");
+
+            // OCF Gradient
+            const gradOCF = defs.append("linearGradient").attr("id", "gradientOCF").attr("x1", "0").attr("y1", "0").attr("x2", "0").attr("y2", "1");
+            gradOCF.append("stop").attr("offset", "0%").attr("stop-color", "#22c55e"); // Green-500
+            gradOCF.append("stop").attr("offset", "100%").attr("stop-color", "#16a34a"); // Green-600
+
+            // CapEx Gradient
+            const gradCapEx = defs.append("linearGradient").attr("id", "gradientCapEx").attr("x1", "0").attr("y1", "0").attr("x2", "0").attr("y2", "1");
+            gradCapEx.append("stop").attr("offset", "0%").attr("stop-color", "#ef4444"); // Red-500
+            gradCapEx.append("stop").attr("offset", "100%").attr("stop-color", "#dc2626"); // Red-600
+
             defs.append("clipPath").attr("id", "clip-cf").append("rect");
 
             const mainG = svg.append("g").attr("class", "main-g");
@@ -98,7 +109,7 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
         // Y Axis
         const allVals = data.flatMap(d => [
             d.operatingCashflow || 0,
-            -(d.capitalExpenditures || 0),
+            d.capitalExpenditures || 0,
             d.freeCashFlow || 0
         ]);
         const fullYDomain: [number, number] = [d3.min(allVals)! * 1.2, d3.max(allVals)! * 1.2];
@@ -146,9 +157,10 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
             .attr("x", d => x(new Date(d.reportedDate)) - barWidth * 1.5) // Offset left
             .attr("y", d => y(Math.max(0, d.operatingCashflow || 0)))
             .attr("width", barWidth)
+            .attr("width", barWidth)
             .attr("height", d => Math.abs(y(d.operatingCashflow || 0) - y(0)))
-            .attr("fill", "#22c55e") // Green 500
-            .attr("rx", 2);
+            .attr("fill", "url(#gradientOCF)") // Gradient
+            .attr("rx", 3);
 
         // 2. CapEx (Red Bars - Negative)
         // CapEx in DB is usually positive, request says "capitalExpenditures needs to be negative"
@@ -158,19 +170,11 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
             .append("rect")
             .attr("class", "bar-capex")
             .attr("x", d => x(new Date(d.reportedDate)) - barWidth * 0.5) // Center-ish
-            .attr("y", d => y(Math.max(0, -(d.capitalExpenditures || 0)))) // Start from 0 if negative, basically y(0)
-            .attr("height", d => Math.abs(y(-(d.capitalExpenditures || 0)) - y(0)))
-            .attr("y", d => {
-                const val = -(d.capitalExpenditures || 0);
-                return val >= 0 ? y(val) : y(0);
-            })
-            // Fix height/y logic for negative bars:
-            // if val < 0: y is y(0), height is y(val) - y(0)
-            .attr("y", d => y(0))
-            .attr("height", d => Math.abs(y(-(d.capitalExpenditures || 0)) - y(0)))
+            .attr("y", d => y(Math.max(0, d.capitalExpenditures || 0)))
+            .attr("height", d => Math.abs(y(d.capitalExpenditures || 0) - y(0)))
             .attr("width", barWidth)
-            .attr("fill", "#ef4444") // Red 500
-            .attr("rx", 2);
+            .attr("fill", "url(#gradientCapEx)")
+            .attr("rx", 3);
 
         // 3. Free Cash Flow (Blue Line/Points)
         const lineFCF = d3.line<StockFinanceRow>()
@@ -196,6 +200,47 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
             .attr("r", 3)
             .attr("fill", "#3b82f6")
             .attr("stroke", "white");
+
+        // Professional Box Legend
+        mainG.select(".legend-box").remove();
+        const lg = mainG.append("g").attr("class", "legend-box").attr("transform", "translate(16, 10)");
+
+        const legendItems = [
+            { label: "Op. Cash Flow (OCF)", color: "#22c55e" },
+            { label: "CapEx", color: "#ef4444" },
+            { label: "Free Cash Flow (OCF - CapEx)", color: "#3b82f6" }
+        ];
+
+        if (data.length > 0) {
+            const itemHeight = 18;
+            const padding = 10;
+            const boxWidth = 200; // Wider for FCF formula
+            const boxHeight = legendItems.length * itemHeight + padding * 2;
+
+            // Background
+            lg.append("rect")
+                .attr("width", boxWidth)
+                .attr("height", boxHeight)
+                .attr("rx", 6)
+                .attr("fill", "white")
+                .attr("fill-opacity", 0.8)
+                .attr("stroke", "#e5e7eb")
+                .attr("stroke-width", 1)
+                .style("filter", "drop-shadow(0 1px 2px rgb(0 0 0 / 0.1))");
+
+            // Items
+            legendItems.forEach((item, i) => {
+                const g = lg.append("g").attr("transform", `translate(${padding}, ${padding + i * itemHeight + 9})`);
+
+                g.append("circle").attr("r", 4).attr("fill", item.color);
+
+                g.append("text")
+                    .attr("x", 12).attr("y", 4)
+                    .attr("font-size", "11px").attr("font-weight", "500").attr("font-family", "monospace")
+                    .attr("fill", "#374151")
+                    .text(item.label);
+            });
+        }
 
 
         // --- Scrollbar Logic ---
@@ -347,7 +392,7 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
                     style={{
                         top: 0,
                         left: 0,
-                        transform: `translate(${Math.min(tooltip.x + 15, containerRef.current!.clientWidth - 150)}px, ${tooltip.y}px)`
+                        transform: `translate(${Math.min(tooltip.x + 15, containerRef.current!.clientWidth - 150)}px, ${tooltip.y}px) translateY(-100%) translateY(-10px)`
                     }}
                 >
                     <div className="mb-1 font-mono text-gray-500">{tooltip.data.reportedDate}</div>
@@ -360,7 +405,7 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
                     <div className="flex items-center gap-2">
                         <span className="w-2 h-2 bg-red-500 rounded-sm"></span>
                         <span className="text-gray-600 dark:text-gray-400">CapEx:</span>
-                        <span className="font-mono font-bold text-red-500">-{formatCurrency(Math.abs(tooltip.data.capitalExpenditures || 0))}</span>
+                        <span className="font-mono font-bold text-red-500">{formatCurrency(tooltip.data.capitalExpenditures || 0)}</span>
                     </div>
                     <div className="flex items-center gap-2 mt-1 pt-1 border-t border-gray-100 dark:border-gray-800">
                         <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
@@ -369,10 +414,7 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
                     </div>
                 </div>
             )}
-            <div className="flex gap-4 justify-center mt-8 text-xs text-gray-500">
-                <div className="flex items-center gap-1"><span className="w-3 h-3 bg-green-500 rounded-sm"></span> Operating Cash Flow</div>
-                <div className="flex items-center gap-1"><span className="w-3 h-3 bg-red-500 rounded-sm"></span> CapEx</div>
-                <div className="flex items-center gap-1"><span className="w-2 h-2 bg-blue-500 rounded-full"></span> Free Cash Flow</div>
+            <div className="flex gap-4 justify-center mt-2 text-xs text-gray-500 absolute bottom-0 w-full pointer-events-none" style={{ bottom: "-20px" }}>
             </div>
         </div>
     );

@@ -71,6 +71,10 @@ export default function RevenueChartD3({ data, forecast = [], height = 300, clas
             svgRef.current = svg;
 
             const defs = svg.append("defs");
+            const grad = defs.append("linearGradient").attr("id", "gradientRevenue").attr("x1", "0").attr("y1", "0").attr("x2", "0").attr("y2", "1");
+            grad.append("stop").attr("offset", "0%").attr("stop-color", "#38bdf8"); // Sky-400
+            grad.append("stop").attr("offset", "100%").attr("stop-color", "#0284c7"); // Sky-600
+
             defs.append("clipPath").attr("id", "clip-revenue").append("rect");
 
             const mainG = svg.append("g").attr("class", "main-g");
@@ -155,8 +159,8 @@ export default function RevenueChartD3({ data, forecast = [], height = 300, clas
             .attr("y", (d) => y(d.totalRevenue || 0))
             .attr("width", barWidth)
             .attr("height", (d) => Math.abs(y(d.totalRevenue || 0) - y(0)))
-            .attr("fill", "#0ea5e9") // Sky blue 500
-            .attr("rx", 2);
+            .attr("fill", "url(#gradientRevenue)") // Gradient
+            .attr("rx", 3);
 
         // Forecast Bars
         const forecastLayer = mainG.select(".forecast-layer");
@@ -176,6 +180,63 @@ export default function RevenueChartD3({ data, forecast = [], height = 300, clas
             .attr("stroke-width", 1.5)
             .attr("rx", 2)
             .style("stroke-dasharray", "4 2");
+
+        // Professional Box Legend
+        const legendG = mainG.select(".forecast-layer"); // Using forecast-layer or append new? standard is usually separate layer.
+        // Actually earlier code appended smart labels to forecastLayer/barsLayer.
+        // Let's create a dedicated legend group attached to mainG to ensure z-index.
+        // But mainG doesn't have a dedicated .legend-layer in this file yet.
+        // I will append it if missing or just append to mainG.
+        // Ideally I should add .legend-layer in initialization, but simpler to just append 'g.legend-box' at end of mainG.
+
+        mainG.select(".legend-box").remove(); // Clear prev
+        const lg = mainG.append("g").attr("class", "legend-box").attr("transform", "translate(16, 10)");
+
+        const legendItems = [
+            { label: "Revenue", type: "reported", color: "#0ea5e9" },
+            { label: "Forecast", type: "forecast", color: "#0ea5e9" }
+        ];
+
+        if (data.length > 0 || forecast.length > 0) {
+            const itemHeight = 18;
+            const padding = 10;
+            const boxWidth = 90;
+            const boxHeight = legendItems.length * itemHeight + padding * 2;
+
+            // Background
+            lg.append("rect")
+                .attr("width", boxWidth)
+                .attr("height", boxHeight)
+                .attr("rx", 6)
+                .attr("fill", "white")
+                .attr("fill-opacity", 0.8)
+                .attr("stroke", "#e5e7eb")
+                .attr("stroke-width", 1)
+                .style("filter", "drop-shadow(0 1px 2px rgb(0 0 0 / 0.1))");
+
+            // Items
+            legendItems.forEach((item, i) => {
+                const g = lg.append("g").attr("transform", `translate(${padding}, ${padding + i * itemHeight + 9})`);
+
+                // Symbol
+                if (item.type === 'reported') {
+                    g.append("circle").attr("r", 4).attr("fill", item.color);
+                } else {
+                    g.append("circle")
+                        .attr("r", 4)
+                        .attr("fill", "white")
+                        .attr("stroke", item.color)
+                        .attr("stroke-width", 1.5)
+                        .attr("stroke-dasharray", "2 2");
+                }
+
+                g.append("text")
+                    .attr("x", 12).attr("y", 4)
+                    .attr("font-size", "11px").attr("font-weight", "500").attr("font-family", "monospace")
+                    .attr("fill", "#374151")
+                    .text(item.label);
+            });
+        }
 
         // --- Scrollbar Logic ---
         const scrollG = mainG.select<SVGGElement>(".scrollbars");
@@ -364,7 +425,7 @@ export default function RevenueChartD3({ data, forecast = [], height = 300, clas
                     style={{
                         top: 0,
                         left: 0,
-                        transform: `translate(${Math.min(tooltip.x + 15, containerRef.current!.clientWidth - 150)}px, ${tooltip.y}px)`
+                        transform: `translate(${Math.min(tooltip.x + 15, containerRef.current!.clientWidth - 150)}px, ${tooltip.y}px) translateY(-100%) translateY(-10px)`
                     }}
                 >
                     <div className="mb-1 font-mono text-gray-500">{tooltip.data.date}</div>
@@ -385,14 +446,6 @@ export default function RevenueChartD3({ data, forecast = [], height = 300, clas
                 </div>
             )}
             <div className="flex gap-4 justify-center mt-2 text-xs text-gray-500 absolute bottom-0 w-full pointer-events-none" style={{ bottom: "-20px" }}>
-            </div>
-            <div className="flex gap-4 justify-center mt-8 text-xs text-gray-500">
-                <div className="flex items-center gap-1">
-                    <span className="w-3 h-3 bg-sky-500 rounded-sm"></span> Revenue
-                </div>
-                <div className="flex items-center gap-1">
-                    <span className="w-3 h-3 border border-sky-500 border-dashed rounded-sm"></span> Revenue Forecast
-                </div>
             </div>
         </div>
     );

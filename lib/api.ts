@@ -70,7 +70,9 @@ export async function getRankings(sortMetric: SortMetric = "ret_1y_pct"): Promis
 
             mid_2y: toNumberOrNull(r[it("mid_2y")]),
             ret_2y_pct: toNumberOrNull(r[it("ret_2y_pct")]),
+            pe_low_used: toNumberOrNull(r[it("pe_low_used")]),
             pe_mid_used: toNumberOrNull(r[it("pe_mid_used")]),
+            pe_high_used: toNumberOrNull(r[it("pe_high_used")]),
             current_pe: toNumberOrNull(r[it("current_pe")]),
             current_pe_gap_pct: toNumberOrNull(r[it("current_pe_gap_pct")]),
             eps_yoy_growth_avg_last4q_pct: toNumberOrNull(r[it("eps_yoy_growth_avg_last4q_pct")]),
@@ -151,11 +153,10 @@ export async function getFinanceData(ticker: string): Promise<import("../types")
             reportedDate: clean(r[it("reportedDate")]),
             reportedEPS: toNumberOrNull(r[it("reportedEPS")]),
             estimatedEPS: toNumberOrNull(r[it("estimatedEPS")]),
+            commonStockSharesOutstanding: toNumberOrNull(r[it("commonStockSharesOutstanding")]),
             operatingCashflow: toNumberOrNull(r[it("operatingCashflow")]),
             capitalExpenditures: toNumberOrNull(r[it("capitalExpenditures")]),
             freeCashFlow: toNumberOrNull(r[it("freeCashFlow")]),
-            // computed field example: 
-            // eps_computed_simple: toNumberOrNull(r[it("eps_computed_simple")]),
         })).filter(x => x.reportedDate.length > 0);
     } catch (e) {
         console.error(`Failed to load finance data for ${ticker}`, e);
@@ -239,4 +240,24 @@ export async function getYoutubeLink(ticker: string): Promise<string | null> {
     if (!videoId) return null;
 
     return `https://www.youtube.com/embed/${videoId}`;
+}
+
+export async function getNews(ticker: string): Promise<import("../types").NewsEvent[]> {
+    const safe = ticker.toUpperCase().replace(/[^A-Z0-9.\-_]/g, "");
+    const filePath = path.join(DATA_DIR, "news", `${safe}.csv`);
+
+    try {
+        const text = await fs.readFile(filePath, "utf-8");
+        const { headers, rows } = parseCSV(text);
+        const it = (col: string) => idx(headers, col);
+
+        return rows.map(r => ({
+            date: clean(r[it("date")]),
+            headline_short: clean(r[it("headline_short")]),
+            source: clean(r[it("source")]),
+        })).filter(x => x.date.length > 0);
+    } catch (e) {
+        // News file might not exist for all stocks, return empty
+        return [];
+    }
 }

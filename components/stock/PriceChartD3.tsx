@@ -3,6 +3,7 @@
 import React, { useRef, useEffect, useMemo, useState } from "react";
 import * as d3 from "d3";
 import type { PriceBandModel, PriceBandPoint } from "../../lib/charts/priceBandModel";
+import type { NewsEvent, StockFinanceRow, StockFinanceForecastRow } from "../../types";
 
 type Props = {
     model: PriceBandModel;
@@ -10,18 +11,27 @@ type Props = {
     className?: string;
     xDomain?: [Date, Date];
     onXDomainChange?: (domain: [Date, Date]) => void;
+    news?: NewsEvent[];
+    finance?: StockFinanceRow[];
+    forecast?: StockFinanceForecastRow[];
 };
 
-export default function PriceChartD3({ model, height = 400, className = "", xDomain, onXDomainChange }: Props) {
+export default function PriceChartD3({ model, height = 400, className = "", xDomain, onXDomainChange, news, finance, forecast }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
     const svgRef = useRef<d3.Selection<SVGSVGElement, unknown, null, undefined> | null>(null);
+    const tooltipTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     const [yDomain, setYDomain] = useState<[number, number] | null>(null);
     const [tooltip, setTooltip] = useState<{
         visible: boolean;
         x: number;
         y: number;
+        x: number;
+        y: number;
         data?: PriceBandPoint;
+        newsData?: NewsEvent;
+        financeData?: StockFinanceRow;
+        forecastData?: StockFinanceForecastRow;
     }>({ visible: false, x: 0, y: 0 });
 
     const data = useMemo(() => model.points, [model]);
@@ -37,7 +47,7 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
         const width = container.clientWidth;
         const h = height;
         // Margins for Scrollbars
-        const margin = { top: 20, right: 80, left: 10, bottom: 50 };
+        const margin = { top: 20, right: 130, left: 10, bottom: 50 };
         const innerWidth = width - margin.left - margin.right;
         const innerHeight = h - margin.top - margin.bottom;
 
@@ -74,6 +84,9 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
             g.append("g").attr("class", "axis-x");
             g.append("g").attr("class", "axis-y");
             g.append("g").attr("class", "scrollbars");
+            g.append("g").attr("class", "scrollbars");
+            g.append("g").attr("class", "news-markers").attr("clip-path", "url(#clip-price)"); // Clip news to graph area? Or axis? Let's clip to chart area to hide out-of-bounds.
+            g.append("g").attr("class", "legend-layer"); // Unclipped and on top
         }
 
         const svg = svgRef.current!;
@@ -83,14 +96,25 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
         const mainG = svg.select(".main-g").attr("transform", `translate(${margin.left},${margin.top})`);
 
         // Domains
-        const currentXDomain = xDomain || d3.extent(data, d => new Date(d.date)) as [Date, Date];
+        const calculateDefaultXDomain = () => {
+            if (xDomain) return xDomain;
+            const dataExtent = d3.extent(data, d => new Date(d.date)) as [Date, Date];
+            if (!forecast || forecast.length === 0) return dataExtent;
+
+            const forecastExtent = d3.extent(forecast, d => new Date(d.reportedDate)) as [Date, Date];
+            return [
+                dataExtent[0] < forecastExtent[0] ? dataExtent[0] : forecastExtent[0],
+                dataExtent[1] > forecastExtent[1] ? dataExtent[1] : forecastExtent[1]
+            ] as [Date, Date];
+        };
+        const currentXDomain = calculateDefaultXDomain();
         const currentYDomain = yDomain || [model.yMin, model.yMax];
 
         const xScale = d3.scaleTime().domain(currentXDomain).range([0, innerWidth]);
         const yScale = d3.scaleLinear().domain(currentYDomain).range([innerHeight, 0]);
 
         // Axes
-        const xAxis = d3.axisBottom(xScale).ticks(6).tickSize(0).tickPadding(10);
+        const xAxis = d3.axisBottom(xScale).tickSize(0).tickPadding(10);
         const yAxis = d3.axisRight(yScale).ticks(6).tickSize(0).tickPadding(10);
         mainG.select<SVGGElement>(".axis-x").attr("transform", `translate(0,${innerHeight})`).call(xAxis).attr("class", "axis-x text-xs font-mono text-gray-500").select(".domain").remove();
         mainG.select<SVGGElement>(".axis-y").attr("transform", `translate(${innerWidth}, 0)`).call(yAxis).attr("class", "axis-y text-xs font-mono text-gray-500").select(".domain").remove();
@@ -109,11 +133,368 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
         bandsG.append("path").datum(data).attr("fill", "#fbbf24").attr("opacity", 0.1).attr("d", areaLowMid).attr("pointer-events", "none");
         bandsG.append("path").datum(data).attr("fill", "none").attr("stroke", "#f59e0b").attr("stroke-width", 1.5).attr("stroke-dasharray", "4 4").attr("d", lineFair).attr("pointer-events", "none");
 
+        // Fair Value & Bounds Labels with Collision Detection
+        // Fair Value & Bounds & Price Labels with Collision Detection
+        // Professional Box Legend
+        const legendG = mainG.select(".legend-layer");
+        legendG.selectAll("*").remove();
+
+        // Legend Items
+        const legendItems = [
+            { label: "Price", color: "#8b5cf6" },
+            { label: "Upper Bound", color: "#fbbf24" },
+            { label: "Fair Value", color: "#f59e0b" },
+            { label: "Lower Bound", color: "#fbbf24" }
+        ];
+
+        if (data.length > 0) {
+            const legX = 16;
+            const legY = 10;
+            const itemHeight = 18;
+            const padding = 10;
+            const boxWidth = 110;
+            const boxHeight = legendItems.length * itemHeight + padding * 2;
+
+            const lg = legendG.append("g").attr("transform", `translate(${legX}, ${legY})`);
+
+            // Background
+            lg.append("rect")
+                .attr("width", boxWidth)
+                .attr("height", boxHeight)
+                .attr("rx", 6)
+                .attr("fill", "white")
+                .attr("fill-opacity", 0.8)
+                .attr("stroke", "#e5e7eb") // gray-200
+                .attr("stroke-width", 1)
+                .style("filter", "drop-shadow(0 1px 2px rgb(0 0 0 / 0.1))");
+
+            // Items
+            legendItems.forEach((item, i) => {
+                const g = lg.append("g").attr("transform", `translate(${padding}, ${padding + i * itemHeight + 9})`); // +9 centers text vertically in 18px height
+
+                // Symbol (Circle)
+                g.append("circle")
+                    .attr("r", 4)
+                    .attr("fill", item.color);
+
+                // Text
+                g.append("text")
+                    .attr("x", 12)
+                    .attr("y", 4) // visual alignment
+                    .attr("font-size", "11px")
+                    .attr("font-weight", "500")
+                    .attr("font-family", "monospace")
+                    .attr("fill", "#374151") // gray-700
+                    .text(item.label);
+            });
+        }
+
         const priceG = mainG.select(".price-line");
         priceG.selectAll("*").remove();
         const areaGradient = d3.area<PriceBandPoint>().defined(d => d.close !== null).curve(d3.curveMonotoneX).x(d => xScale(new Date(d.date))).y0(innerHeight).y1(d => yScale(d.close!));
         priceG.append("path").datum(data).attr("fill", "url(#gradientPrice)").attr("d", areaGradient).attr("pointer-events", "none");
         priceG.append("path").datum(data).attr("fill", "none").attr("stroke", "#8b5cf6").attr("stroke-width", 2.5).attr("d", lineGen).attr("pointer-events", "none");
+
+        // Price Label logic moved to main collision block
+
+        // Price Label logic moved to main collision block
+
+        // --- News Markers ---
+        const newsG = mainG.select(".news-markers");
+        newsG.selectAll("*").remove();
+        if (news && news.length > 0) {
+            // Filter news within domain locally to avoid rendering invalid dates if any
+            const visibleNews = news.filter(n => {
+                const d = new Date(n.date);
+                return d >= currentXDomain[0] && d <= currentXDomain[1];
+            });
+
+            // Marker Group
+            const markers = newsG.selectAll(".news-marker")
+                .data(visibleNews)
+                .enter()
+                .append("g")
+                .attr("class", "news-marker")
+                .attr("transform", d => `translate(${xScale(new Date(d.date))}, ${innerHeight})`)
+                .style("cursor", "pointer");
+
+            // Flag Pole
+            markers.append("line")
+                .attr("y1", 0)
+                .attr("y2", -15)
+                .attr("stroke", "#f97316") // Orange-500
+                .attr("stroke-width", 1);
+
+            // Pulse Animation
+            const pulse = (selection: d3.Selection<SVGCircleElement, any, any, any>) => {
+                selection
+                    .transition()
+                    .duration(1000)
+                    .ease(d3.easeSinInOut)
+                    .attr("r", 6)
+                    .attr("stroke-width", 0)
+                    .attr("opacity", 0.6)
+                    .transition()
+                    .duration(1000)
+                    .attr("r", 4)
+                    .attr("stroke-width", 1)
+                    .attr("opacity", 1)
+                    .on("end", function () { d3.select(this).call(pulse); });
+            };
+
+            // Flag/Icon
+            markers.append("circle")
+                .attr("cy", -15)
+                .attr("r", 4)
+                .attr("fill", "#f97316")
+                .attr("stroke", "white")
+                .attr("stroke-width", 1)
+                .call(pulse as any);
+
+            // Interaction
+            markers
+                .on("mouseover", (event, d) => {
+                    // Clear any pending hide/show timers
+                    if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current);
+
+                    // --- Visual Connection Logic ---
+                    const newsDate = new Date(d.date);
+                    const bisect = d3.bisector<PriceBandPoint, Date>((p) => new Date(p.date)).center;
+                    const index = bisect(data, newsDate);
+                    const point = data[index];
+
+                    let tooltipX = 0;
+                    let tooltipY = 0;
+                    const animationDuration = 400; // Line animation time
+
+                    if (point && point.close !== null) {
+                        const px = xScale(new Date(point.date));
+                        const py = yScale(point.close);
+
+                        // Calculate absolute coordinates relative to container
+                        tooltipX = px + margin.left;
+                        tooltipY = py + margin.top;
+
+                        // 1. Vertical Connection Line
+                        mainG.append("line")
+                            .attr("class", "news-connection-line")
+                            .attr("x1", px).attr("x2", px)
+                            .attr("y1", innerHeight - 15) // Start at top of flag pole
+                            .attr("y2", innerHeight - 15) // Start closed
+                            .attr("stroke", "#f97316")
+                            .attr("stroke-width", 2)
+                            .attr("stroke-dasharray", "3 3")
+                            .attr("opacity", 0.8)
+                            .transition()
+                            .duration(animationDuration) // 400ms
+                            .ease(d3.easeCubicOut)
+                            .attr("y2", py);
+
+                        // 2. Highlight Price Point
+                        mainG.append("circle")
+                            .attr("class", "news-price-highlight")
+                            .attr("cx", px)
+                            .attr("cy", py)
+                            .attr("r", 0)
+                            .attr("fill", "#fff")
+                            .attr("stroke", "#f97316")
+                            .attr("stroke-width", 3)
+                            .transition()
+                            .delay(animationDuration - 100) // Start slightly before line finishes
+                            .duration(300)
+                            .ease(d3.easeBackOut)
+                            .attr("r", 6);
+                    } else {
+                        // Fallback use mouse position
+                        const [mx, my] = d3.pointer(event, containerRef.current);
+                        tooltipX = mx;
+                        tooltipY = my;
+                    }
+
+                    // 3. Delayed Tooltip Reveal (800ms)
+                    tooltipTimerRef.current = setTimeout(() => {
+                        setTooltip({
+                            visible: true,
+                            x: tooltipX,
+                            y: tooltipY - 20, // Slightly above price point
+                            newsData: d,
+                            data: undefined
+                        });
+                    }, 800); // User requested "more delay" -> 800ms
+                })
+                .on("mouseout", () => {
+                    if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current);
+                    setTooltip(prev => ({ ...prev, visible: false }));
+                    // Remove Connection Visuals immediately
+                    mainG.selectAll(".news-connection-line").remove();
+                    mainG.selectAll(".news-price-highlight").remove();
+                });
+        }
+
+        // --- Earnings Markers ---
+        const earningsG = mainG.select(".earnings-markers-layer");
+        if (earningsG.empty()) mainG.append("g").attr("class", "earnings-markers-layer");
+        const earnLayer = mainG.select(".earnings-markers-layer");
+        earnLayer.selectAll("*").remove();
+
+        if (finance && finance.length > 0) {
+            // Filter visible earnings
+            const visibleFinance = finance.filter(f => {
+                const d = new Date(f.reportedDate);
+                // Expand check slightly to avoid clipping markers on the exact edge
+                return d >= currentXDomain[0] && d <= currentXDomain[1];
+            });
+
+            earnLayer.selectAll(".earnings-marker")
+                .data(visibleFinance)
+                .enter()
+                .append("path")
+                .attr("class", "earnings-marker")
+                .attr("d", d3.symbol().type(d3.symbolDiamond).size(80))
+                .attr("transform", d => `translate(${xScale(new Date(d.reportedDate))}, ${innerHeight + 10})`)
+                .attr("fill", "#a855f7") // Purple-500
+                .attr("stroke", "white")
+                .attr("stroke-width", 1)
+                .style("cursor", "pointer")
+                .on("mouseover", (event, d) => {
+                    const date = new Date(d.reportedDate);
+                    const idx = bisect(data, date);
+                    const pricePoint = data[idx];
+
+                    if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current);
+
+                    if (pricePoint && pricePoint.close !== null) {
+                        const tooltipX = xScale(date) + margin.left;
+                        const tooltipY = yScale(pricePoint.close) + margin.top;
+
+                        // 1. Animate Connection Line
+                        mainG.append("line")
+                            .attr("class", "news-connection-line")
+                            .attr("x1", xScale(date)).attr("x2", xScale(date))
+                            .attr("y1", innerHeight + 10)
+                            .attr("y2", innerHeight + 10)
+                            .attr("stroke", "#a855f7")
+                            .attr("stroke-width", 1.5)
+                            .attr("stroke-dasharray", "3 3")
+                            .transition().duration(400).attr("y2", yScale(pricePoint.close));
+
+                        // 2. Animate Highlight Circle
+                        setTimeout(() => {
+                            mainG.append("circle")
+                                .attr("class", "news-price-highlight")
+                                .attr("cx", xScale(date)).attr("cy", yScale(pricePoint.close))
+                                .attr("r", 0)
+                                .attr("fill", "#a855f7")
+                                .attr("stroke", "white")
+                                .attr("stroke-width", 2)
+                                .transition().duration(300)
+                                .attr("r", 6);
+                        }, 400);
+
+                        // 3. Delayed Tooltip
+                        tooltipTimerRef.current = setTimeout(() => {
+                            setTooltip({
+                                visible: true,
+                                x: tooltipX,
+                                y: tooltipY - 20,
+                                financeData: d,
+                                data: undefined,
+                                newsData: undefined
+                            });
+                        }, 800);
+                    }
+                })
+                .on("mouseout", () => {
+                    if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current);
+                    setTooltip(prev => ({ ...prev, visible: false }));
+                    mainG.selectAll(".news-connection-line").remove();
+                    mainG.selectAll(".news-price-highlight").remove();
+                });
+        }
+
+        // --- Forecast Markers ---
+        const forecastG = mainG.select(".forecast-markers-layer");
+        if (forecastG.empty()) mainG.append("g").attr("class", "forecast-markers-layer");
+        const foreLayer = mainG.select(".forecast-markers-layer");
+        foreLayer.selectAll("*").remove();
+
+        if (forecast && forecast.length > 0) {
+            const visibleForecast = forecast.filter(f => {
+                const d = new Date(f.reportedDate);
+                return d >= currentXDomain[0] && d <= currentXDomain[1];
+            });
+
+            foreLayer.selectAll(".forecast-marker")
+                .data(visibleForecast)
+                .enter()
+                .append("path")
+                .attr("class", "forecast-marker")
+                .attr("d", d3.symbol().type(d3.symbolDiamond).size(50))
+                .attr("transform", d => `translate(${xScale(new Date(d.reportedDate))}, ${innerHeight + 10})`)
+                .attr("fill", "white") // Hollow
+                .attr("stroke", "#a855f7") // Purple-500
+                .attr("stroke-width", 2)
+                .attr("stroke-dasharray", "2 1")
+                .style("cursor", "pointer")
+                .on("mouseover", (event, d) => {
+                    const date = new Date(d.reportedDate);
+                    // No price point for future usually, but we might have band data?
+                    // Or we just show vertical line to band?
+                    // Let's try finding nearest band point (which might be forecasted price band)
+                    const idx = bisect(data, date);
+                    const pricePoint = data[idx];
+
+                    if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current);
+
+                    const tooltipX = xScale(date) + margin.left;
+                    // If no price, use mid band or center?
+                    const yVal = (pricePoint && pricePoint.mid) ? yScale(pricePoint.mid) : yScale(model.yMax / 2); // Fallback
+                    const tooltipY = yVal + margin.top;
+
+                    // 1. Connection Line (Dotted)
+                    mainG.append("line")
+                        .attr("class", "news-connection-line")
+                        .attr("x1", xScale(date)).attr("x2", xScale(date))
+                        .attr("y1", innerHeight + 10)
+                        .attr("y2", innerHeight + 10)
+                        .attr("stroke", "#a855f7")
+                        .attr("stroke-width", 1.5)
+                        .attr("stroke-dasharray", "2 2")
+                        .transition().duration(400).attr("y2", yVal);
+
+                    // 2. Highlight Circle
+                    setTimeout(() => {
+                        mainG.append("circle")
+                            .attr("class", "news-price-highlight")
+                            .attr("cx", xScale(date)).attr("cy", yVal)
+                            .attr("r", 0)
+                            .attr("fill", "white")
+                            .attr("stroke", "#a855f7")
+                            .attr("stroke-width", 2)
+                            .transition().duration(300)
+                            .attr("r", 5);
+                    }, 400);
+
+                    // 3. Tooltip
+                    tooltipTimerRef.current = setTimeout(() => {
+                        setTooltip({
+                            visible: true,
+                            x: tooltipX,
+                            y: tooltipY - 20,
+                            forecastData: d,
+                            data: undefined,
+                            newsData: undefined,
+                            financeData: undefined
+                        });
+                    }, 800);
+                })
+                .on("mouseout", () => {
+                    if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current);
+                    setTooltip(prev => ({ ...prev, visible: false }));
+                    mainG.selectAll(".news-connection-line").remove();
+                    mainG.selectAll(".news-price-highlight").remove();
+                });
+        }
 
         // --- Scrollbar Logic ---
         const scrollG = mainG.select<SVGGElement>(".scrollbars");
@@ -305,7 +686,7 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
         renderScrollbar(scrollG, "scrollbar-x", 0, innerHeight + 35, innerWidth, 16, 'horizontal', fullX, [currentXDomain[0].getTime(), currentXDomain[1].getTime()],
             (d) => onXDomainChange && onXDomainChange([new Date(d[0]), new Date(d[1])]));
 
-        renderScrollbar(scrollG, "scrollbar-y", innerWidth + 64, 0, innerHeight, 16, 'vertical', [fullY[1], fullY[0]], [currentYDomain[1], currentYDomain[0]],
+        renderScrollbar(scrollG, "scrollbar-y", innerWidth + 100, 0, innerHeight, 16, 'vertical', [fullY[1], fullY[0]], [currentYDomain[1], currentYDomain[0]],
             (d) => setYDomain([d[1], d[0]]));
 
         // Disable Zoom on chart (keep tooltip capture)
@@ -323,10 +704,10 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
             const date = xScale.invert(mx);
             const index = bisect(data, date);
             const d = data[index];
-            if (d) setTooltip({ visible: true, x: mx + margin.left, y: d3.pointer(event)[1] + margin.top, data: d });
+            if (d) setTooltip({ visible: true, x: mx + margin.left, y: d3.pointer(event)[1] + margin.top, data: d, newsData: undefined });
         }).on("mouseleave", () => setTooltip(prev => ({ ...prev, visible: false })));
 
-    }, [data, height, model, xDomain, yDomain, onXDomainChange]);
+    }, [data, height, model, xDomain, yDomain, onXDomainChange, news]);
 
     return (
         <div className={`relative w-full ${className}`} ref={containerRef}>
@@ -371,6 +752,71 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
                                     );
                                 })()
                             )}
+                        </>
+                    )}
+                </div>
+            )}
+
+            {/* News/Earnings/Forecast Tooltip */}
+            {tooltip.visible && (tooltip.newsData || tooltip.financeData || tooltip.forecastData) && (
+                <div
+                    className={`pointer-events-none absolute z-[60] rounded-lg border p-3 shadow-xl backdrop-blur-sm text-sm max-w-xs dark:bg-gray-900/95 ${tooltip.newsData
+                        ? "border-orange-200 bg-orange-50/95 dark:border-orange-900/50"
+                        : "border-purple-200 bg-purple-50/95 dark:border-purple-900/50"
+                        }`}
+                    style={{
+                        top: 0,
+                        left: 0,
+                        transform: `translate(${Math.min(tooltip.x - 100, containerRef.current ? containerRef.current.clientWidth - 220 : 0)}px, ${tooltip.y}px) translateY(-100%)`
+                    }}
+                >
+                    {tooltip.newsData && (
+                        <>
+                            <div className="mb-1 text-xs font-semibold text-orange-600 uppercase tracking-wider">{tooltip.newsData.source}</div>
+                            <div className="text-sm font-medium text-gray-900 dark:text-gray-100 max-w-[200px] leading-snug">
+                                {tooltip.newsData.headline_short}
+                            </div>
+                            <div className="mt-1 text-xs text-gray-500">{tooltip.newsData.date}</div>
+                        </>
+                    )}
+                    {tooltip.financeData && (
+                        <>
+                            <div className="mb-1 text-xs font-semibold text-purple-600 uppercase tracking-wider">Earnings Report</div>
+                            <div className="text-xs text-gray-500 mb-2">{tooltip.financeData.reportedDate}</div>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                                <span className="text-gray-600 dark:text-gray-400">Revenue:</span>
+                                <span className="font-mono font-bold text-gray-900 dark:text-white">
+                                    {tooltip.financeData.totalRevenue ? `$${(tooltip.financeData.totalRevenue / 1e9).toFixed(2)}B` : 'N/A'}
+                                </span>
+                                <span className="text-gray-600 dark:text-gray-400">Net Income:</span>
+                                <span className="font-mono font-bold text-gray-900 dark:text-white">
+                                    {tooltip.financeData.netIncome ? `$${(tooltip.financeData.netIncome / 1e9).toFixed(2)}B` : 'N/A'}
+                                </span>
+                                <span className="text-gray-600 dark:text-gray-400">EPS:</span>
+                                <span className="font-mono font-bold text-gray-900 dark:text-white">
+                                    {tooltip.financeData.reportedEPS || 'N/A'}
+                                </span>
+                            </div>
+                        </>
+                    )}
+                    {tooltip.forecastData && (
+                        <>
+                            <div className="mb-1 text-xs font-semibold text-purple-600 uppercase tracking-wider">Est. Earnings (Model)</div>
+                            <div className="text-xs text-gray-500 mb-2">{tooltip.forecastData.reportedDate}</div>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                                <span className="text-gray-600 dark:text-gray-400">Est. Rev:</span>
+                                <span className="font-mono font-bold text-gray-900 dark:text-white">
+                                    {tooltip.forecastData.revenue_forecast ? `$${(tooltip.forecastData.revenue_forecast / 1e9).toFixed(2)}B` : 'N/A'}
+                                </span>
+                                <span className="text-gray-600 dark:text-gray-400">Est. Net Inc:</span>
+                                <span className="font-mono font-bold text-gray-900 dark:text-white">
+                                    {tooltip.forecastData.netIncome_forecast ? `$${(tooltip.forecastData.netIncome_forecast / 1e9).toFixed(2)}B` : 'N/A'}
+                                </span>
+                                <span className="text-gray-600 dark:text-gray-400">Est. EPS:</span>
+                                <span className="font-mono font-bold text-gray-900 dark:text-white">
+                                    {tooltip.forecastData.eps_forecast?.toFixed(2) || 'N/A'}
+                                </span>
+                            </div>
                         </>
                     )}
                 </div>

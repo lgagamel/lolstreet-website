@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { getCurrentClose, getStockSeries, getFinanceData, getFinanceForecast, getYoutubeLink } from "../../../lib/api";
+import { getCurrentClose, getStockSeries, getFinanceData, getFinanceForecast, getYoutubeLink, getRankings, getNews } from "../../../lib/api";
 import StockDashboard from "../../../components/stock/StockDashboard";
 import YoutubeEmbed from "../../../components/stock/YoutubeEmbed";
+import InfoTooltip from "../../../components/InfoTooltip";
 
 type PageProps = {
     params: Promise<{ ticker?: string }>;
@@ -45,12 +46,16 @@ export default async function Page(props: PageProps) {
         );
     }
 
-    const [series, finance, forecast, videoLink] = await Promise.all([
+    const [series, finance, forecast, videoLink, rankings, news] = await Promise.all([
         getStockSeries(ticker),
         getFinanceData(ticker),
         getFinanceForecast(ticker),
         getYoutubeLink(ticker),
+        getRankings(),
+        getNews(ticker),
     ]);
+
+    const summary = rankings.find(r => r.ticker === ticker) || null;
     const cur = getCurrentClose(series);
 
     const allDates = series
@@ -118,14 +123,24 @@ export default async function Page(props: PageProps) {
                                     {currentPE && Number.isFinite(currentPE) && (
                                         <>
                                             <div className="flex items-center gap-2 bg-violet-50 dark:bg-violet-900/20 px-3 py-1.5 rounded-lg border border-violet-100 dark:border-violet-900/30">
-                                                <span className="font-semibold text-violet-700 dark:text-violet-300">Current PE</span>
+                                                <span className="font-semibold text-violet-700 dark:text-violet-300 flex items-center">
+                                                    Current PE
+                                                    <InfoTooltip>
+                                                        🏷️ <strong>How many years of profit you're paying for TODAY.</strong> Like buying a lemonade stand: if it earns $5/year and costs $50, the PE is 10 (you'd wait 10 years to break even).
+                                                    </InfoTooltip>
+                                                </span>
                                                 <span className="font-mono font-medium text-violet-900 dark:text-violet-100">
                                                     {currentPE.toFixed(2)}
                                                 </span>
                                             </div>
 
                                             <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-100 dark:border-gray-700">
-                                                <span className="font-semibold text-gray-500 dark:text-gray-400">Gap to the 1-Year PE Median</span>
+                                                <span className="font-semibold text-gray-500 dark:text-gray-400 flex items-center">
+                                                    PE Gap
+                                                    <InfoTooltip>
+                                                        💰 <strong>Is this stock ON SALE or OVERPRICED?</strong> Negative (green) = Cheaper than usual! Positive (red) = More expensive than usual!
+                                                    </InfoTooltip>
+                                                </span>
                                                 {(() => {
                                                     const gap = (currentPE - mid) / mid;
                                                     const isPremium = gap > 0;
@@ -139,16 +154,25 @@ export default async function Page(props: PageProps) {
                                             </div>
                                         </>
                                     )}
-
                                     <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-100 dark:border-gray-700">
-                                        <span className="font-semibold text-gray-500 dark:text-gray-400">1-Year PE Median</span>
+                                        <span className="font-semibold text-gray-500 dark:text-gray-400 flex items-center">
+                                            1-Year PE Median
+                                            <InfoTooltip>
+                                                🏷️ <strong>The 'typical price tag'</strong> investors paid for this stock over the last year. Think of it as the average sticker price!
+                                            </InfoTooltip>
+                                        </span>
                                         <span className="font-mono font-medium text-gray-900 dark:text-gray-200">
                                             {mid.toFixed(2)}
                                         </span>
                                     </div>
 
                                     <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5 rounded-lg border border-blue-100 dark:border-blue-900/30">
-                                        <span className="font-semibold text-blue-700 dark:text-blue-300">1-Year PE Range (90% CI)</span>
+                                        <span className="font-semibold text-blue-700 dark:text-blue-300 flex items-center">
+                                            Typical PE Range
+                                            <InfoTooltip>
+                                                📊 <strong>Where the PE usually lives!</strong> This shows the normal range (90% of the time) for this stock's PE over the past year.
+                                            </InfoTooltip>
+                                        </span>
                                         <span className="font-mono font-medium text-blue-900 dark:text-blue-100">
                                             {p05.toFixed(2)} - {p95.toFixed(2)}
                                         </span>
@@ -195,7 +219,13 @@ export default async function Page(props: PageProps) {
 
                         return (
                             <div className="flex items-center gap-2 text-xs">
-                                <span className="text-gray-500 dark:text-gray-400 font-medium">Avg. YoY EPS Growth (Past 4 Quarters):</span>
+                                <span className="text-gray-500 dark:text-gray-400 font-medium flex items-center">
+                                    EPS Growth (Past Year)
+                                    <InfoTooltip>
+                                        🍰 <strong>Is the profit pie getting BIGGER?</strong> This shows how much more (or less) the company is earning per share compared to last year!
+                                    </InfoTooltip>
+                                    :
+                                </span>
                                 <span className={`font-mono font-bold ${isPos ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
                                     {isPos ? '+' : ''}{(avgGrowth * 100).toFixed(1)}%
                                 </span>
@@ -216,7 +246,7 @@ export default async function Page(props: PageProps) {
                 )
             }
 
-            <StockDashboard series={series} finance={finance} forecast={forecast} />
+            <StockDashboard series={series} finance={finance} forecast={forecast} summary={summary} news={news} />
 
             <div className="mt-12 pt-6 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-400 text-center">
                 Loaded {series.length} data points

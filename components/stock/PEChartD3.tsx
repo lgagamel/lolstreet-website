@@ -37,7 +37,7 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
         const width = container.clientWidth;
         const h = height;
         // Margins for Scrollbars
-        const margin = { top: 20, right: 80, left: 10, bottom: 50 };
+        const margin = { top: 20, right: 130, left: 10, bottom: 50 };
         const innerWidth = width - margin.left - margin.right;
         const innerHeight = h - margin.top - margin.bottom;
 
@@ -65,10 +65,11 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
             mainG.append("rect").attr("class", "zoom-capture").attr("fill", "transparent");
             mainG.append("g").attr("class", "grid-lines opacity-10");
             mainG.append("g").attr("class", "data-layer").attr("pointer-events", "none").attr("clip-path", "url(#clip-pe)");
-            mainG.append("g").attr("class", "drag-layer");
             mainG.append("g").attr("class", "axis-x");
             mainG.append("g").attr("class", "axis-y");
             mainG.append("g").attr("class", "scrollbars");
+            mainG.append("g").attr("class", "drag-layer"); // Add this back
+            mainG.append("g").attr("class", "legend-layer");
         }
 
         const svg = svgRef.current!;
@@ -82,7 +83,7 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
         const xScale = d3.scaleTime().domain(currentXDomain).range([0, innerWidth]);
         const yScale = d3.scaleLinear().domain(currentYDomain).range([innerHeight, 0]);
 
-        const xAxis = d3.axisBottom(xScale).ticks(6).tickSize(0).tickPadding(10);
+        const xAxis = d3.axisBottom(xScale).tickSize(0).tickPadding(10);
         const yAxis = d3.axisRight(yScale).ticks(6).tickSize(0).tickPadding(10);
 
         mainG.select<SVGGElement>(".axis-x").attr("transform", `translate(0,${innerHeight})`).call(xAxis).attr("class", "axis-x text-xs font-mono text-gray-500").select(".domain").remove();
@@ -92,6 +93,7 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
         mainG.select<SVGGElement>(".grid-lines").call(yAxisGrid).style("stroke-dasharray", "4 4").selectAll("line").attr("stroke", "currentColor");
         mainG.select(".grid-lines").select(".domain").remove();
 
+        // No change needed for removal as no HTML legend exists. Code for context.
         // Footnote
         mainG.selectAll(".footnote").remove();
         mainG.append("text")
@@ -110,7 +112,53 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
         dataLayer.append("path").datum(data).attr("class", "pe-area").attr("fill", "url(#gradientPE)").attr("d", areaGenerator);
         dataLayer.append("path").datum(data).attr("class", "pe-line").attr("fill", "none").attr("stroke", "#3b82f6").attr("stroke-width", 2.5).attr("d", lineGenerator);
 
-        // Draggable Lines
+        // Professional Box Legend
+        const legendG = mainG.select(".legend-layer");
+        legendG.selectAll("*").remove();
+
+        const legendItems = [
+            { label: "PE Ratio", color: "#3b82f6" },
+            { label: "Upper PE", color: "#9ca3af" },
+            { label: "Mid PE", color: "#f59e0b" },
+            { label: "Lower PE", color: "#9ca3af" }
+        ];
+
+        if (data.length > 0) {
+            const legX = 16;
+            const legY = 10;
+            const itemHeight = 18;
+            const padding = 10;
+            const boxWidth = 90;
+            const boxHeight = legendItems.length * itemHeight + padding * 2;
+
+            const lg = legendG.append("g").attr("transform", `translate(${legX}, ${legY})`);
+
+            // Background
+            lg.append("rect")
+                .attr("width", boxWidth)
+                .attr("height", boxHeight)
+                .attr("rx", 6)
+                .attr("fill", "white")
+                .attr("fill-opacity", 0.8)
+                .attr("stroke", "#e5e7eb")
+                .attr("stroke-width", 1)
+                .style("filter", "drop-shadow(0 1px 2px rgb(0 0 0 / 0.1))");
+
+            // Items
+            legendItems.forEach((item, i) => {
+                const g = lg.append("g").attr("transform", `translate(${padding}, ${padding + i * itemHeight + 9})`);
+
+                g.append("circle").attr("r", 4).attr("fill", item.color);
+
+                g.append("text")
+                    .attr("x", 12).attr("y", 4)
+                    .attr("font-size", "11px").attr("font-weight", "500").attr("font-family", "monospace")
+                    .attr("fill", "#374151")
+                    .text(item.label);
+            });
+        }
+
+        // Draggable Lines (Lines Only)
         const dragLayer = mainG.select(".drag-layer");
         const { low, mid, high } = model.assumed;
         const dragItems = [
@@ -123,17 +171,30 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
         const groupsEnter = groups.enter().append("g").attr("class", "drag-group").style("cursor", "row-resize");
         groupsEnter.append("line").attr("stroke-width", 1.5);
         groupsEnter.append("rect").attr("fill", "transparent").attr("height", 20).attr("y", -10);
+
+        // Update Position & Attrs
         const groupsUpdate = groups.merge(groupsEnter);
         groupsUpdate.attr("transform", d => `translate(0, ${yScale(d.val)})`);
-        groupsUpdate.select("line").attr("x1", 0).attr("x2", innerWidth).attr("stroke", d => d.color).attr("stroke-dasharray", d => d.dash);
-        groupsUpdate.select("rect").attr("width", innerWidth).attr("x", 0);
+        groupsUpdate.select("line")
+            .attr("x2", innerWidth) // Full width
+            .attr("stroke", d => d.color)
+            .attr("stroke-dasharray", d => d.dash);
+        groupsUpdate.select("rect").attr("width", innerWidth);
 
-        groupsUpdate.call(d3.drag<SVGGElement, typeof dragItems[0]>().container(mainG.node() as any).on("start", function () { d3.select(this).style("cursor", "grabbing"); }).on("drag", function (event, d) {
-            const newY = Math.max(0, Math.min(innerHeight, event.y));
-            d3.select(this).attr("transform", `translate(0, ${newY})`);
-            if (onUpdateAssumedPE) { const newVal = yScale.invert(newY); onUpdateAssumedPE({ [d.key]: newVal }); }
-        }).on("end", function () { d3.select(this).style("cursor", "row-resize"); }));
+        // Events
+        groupsUpdate.call((d3.drag<SVGGElement, typeof dragItems[0]>()
+            .on("drag", (event, d) => {
+                const newY = Math.min(innerHeight, Math.max(0, event.y));
+                const newVal = yScale.invert(newY);
+                if (onUpdateAssumedPE) {
+                    onUpdateAssumedPE({ [d.key]: newVal });
+                }
+            })
+        ) as any);
+
         groups.exit().remove();
+
+        // Duplicate logic removed
 
         // --- Scrollbar Logic ---
         const scrollG = mainG.select<SVGGElement>(".scrollbars");
@@ -285,7 +346,7 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
         renderScrollbar(scrollG, "scrollbar-x", 0, innerHeight + 35, innerWidth, 16, 'horizontal', fullX, [currentXDomain[0].getTime(), currentXDomain[1].getTime()],
             (d) => onXDomainChange && onXDomainChange([new Date(d[0]), new Date(d[1])]));
 
-        renderScrollbar(scrollG, "scrollbar-y", innerWidth + 64, 0, innerHeight, 16, 'vertical', [fullY[1], fullY[0]], [currentYDomain[1], currentYDomain[0]],
+        renderScrollbar(scrollG, "scrollbar-y", innerWidth + 100, 0, innerHeight, 16, 'vertical', [fullY[1], fullY[0]], [currentYDomain[1], currentYDomain[0]],
             (d) => setYDomain([d[1], d[0]]));
 
         // Disable Zoom (Keep Tooltip)
@@ -300,15 +361,51 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
             const date = xScale.invert(mx);
             const index = bisect(data, date);
             const d = data[index];
-            if (d) setTooltip({ visible: true, x: mx + margin.left, y: d3.pointer(event)[1] + margin.top, data: d });
-        }).on("mouseleave", () => setTooltip(prev => ({ ...prev, visible: false })));
+
+            // Interaction Visuals
+            mainG.selectAll(".interaction-guide").remove();
+
+            if (d) {
+                // Determine Y value: PE Ratio
+                const val = d.pe_ratio;
+                if (val !== null) {
+                    const px = xScale(new Date(d.date));
+                    const py = yScale(val);
+
+                    const guide = mainG.append("g").attr("class", "interaction-guide").style("pointer-events", "none");
+
+                    // Connection Line
+                    guide.append("line")
+                        .attr("x1", px).attr("x2", px)
+                        .attr("y1", innerHeight)
+                        .attr("y2", py)
+                        .attr("stroke", "#3b82f6")
+                        .attr("stroke-width", 1.5)
+                        .attr("stroke-dasharray", "3 3")
+                        .attr("opacity", 0.6);
+
+                    // Highlight Circle
+                    guide.append("circle")
+                        .attr("cx", px).attr("cy", py)
+                        .attr("r", 5)
+                        .attr("fill", "#fff")
+                        .attr("stroke", "#3b82f6")
+                        .attr("stroke-width", 2);
+                }
+
+                setTooltip({ visible: true, x: mx + margin.left, y: d3.pointer(event)[1] + margin.top, data: d });
+            }
+        }).on("mouseleave", () => {
+            setTooltip(prev => ({ ...prev, visible: false }));
+            mainG.selectAll(".interaction-guide").remove();
+        });
 
     }, [data, height, model, xDomain, yDomain, onXDomainChange]);
 
     return (
         <div className={`relative w-full ${className}`} ref={containerRef}>
             {tooltip.visible && tooltip.data && (
-                <div className="pointer-events-none absolute z-50 rounded-lg border border-gray-200 bg-white/90 p-3 shadow-lg backdrop-blur-sm dark:border-gray-800 dark:bg-black/90 text-sm" style={{ top: 0, left: 0, transform: `translate(${Math.min(tooltip.x + 15, containerRef.current!.clientWidth - 150)}px, ${tooltip.y}px)` }}>
+                <div className="pointer-events-none absolute z-50 rounded-lg border border-gray-200 bg-white/90 p-3 shadow-lg backdrop-blur-sm dark:border-gray-800 dark:bg-black/90 text-sm" style={{ top: 0, left: 0, transform: `translate(${Math.min(tooltip.x + 15, containerRef.current!.clientWidth - 150)}px, ${tooltip.y}px) translateY(-100%)` }}>
                     <div className="mb-1 font-mono text-gray-500">{tooltip.data.date}</div>
                     {tooltip.data.pe_ratio !== null && (
                         <div className="flex items-center gap-2">

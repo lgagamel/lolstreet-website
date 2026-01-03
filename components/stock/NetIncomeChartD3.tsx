@@ -67,6 +67,10 @@ export default function NetIncomeChartD3({ data, forecast, height = 300, xDomain
             svgRef.current = svg;
 
             const defs = svg.append("defs");
+            const grad = defs.append("linearGradient").attr("id", "gradientNetIncome").attr("x1", "0").attr("y1", "0").attr("x2", "0").attr("y2", "1");
+            grad.append("stop").attr("offset", "0%").attr("stop-color", "#6366f1"); // Indigo-500
+            grad.append("stop").attr("offset", "100%").attr("stop-color", "#4338ca"); // Indigo-700
+
             defs.append("clipPath").attr("id", "clip-net-income").append("rect");
 
             const mainG = svg.append("g").attr("class", "main-g");
@@ -155,6 +159,55 @@ export default function NetIncomeChartD3({ data, forecast, height = 300, xDomain
             .attr("stroke-width", 1.5)
             .attr("rx", 2)
             .style("stroke-dasharray", "4 2");
+
+        // Professional Box Legend
+        mainG.select(".legend-box").remove();
+        const lg = mainG.append("g").attr("class", "legend-box").attr("transform", "translate(16, 10)");
+
+        const legendItems = [
+            { label: "Net Income", type: "reported", color: "#14b8a6" },
+            { label: "Forecast", type: "forecast", color: "#14b8a6" }
+        ];
+
+        if (data.length > 0 || forecast.length > 0) {
+            const itemHeight = 18;
+            const padding = 10;
+            const boxWidth = 95; // Slightly wider for "Net Income"
+            const boxHeight = legendItems.length * itemHeight + padding * 2;
+
+            // Background
+            lg.append("rect")
+                .attr("width", boxWidth)
+                .attr("height", boxHeight)
+                .attr("rx", 6)
+                .attr("fill", "white")
+                .attr("fill-opacity", 0.8)
+                .attr("stroke", "#e5e7eb")
+                .attr("stroke-width", 1)
+                .style("filter", "drop-shadow(0 1px 2px rgb(0 0 0 / 0.1))");
+
+            // Items
+            legendItems.forEach((item, i) => {
+                const g = lg.append("g").attr("transform", `translate(${padding}, ${padding + i * itemHeight + 9})`);
+
+                if (item.type === 'reported') {
+                    g.append("circle").attr("r", 4).attr("fill", item.color);
+                } else {
+                    g.append("circle")
+                        .attr("r", 4)
+                        .attr("fill", "white")
+                        .attr("stroke", item.color)
+                        .attr("stroke-width", 1.5)
+                        .attr("stroke-dasharray", "2 2");
+                }
+
+                g.append("text")
+                    .attr("x", 12).attr("y", 4)
+                    .attr("font-size", "11px").attr("font-weight", "500").attr("font-family", "monospace")
+                    .attr("fill", "#374151")
+                    .text(item.label);
+            });
+        }
 
         // Scrollbars
         const scrollG = mainG.select<SVGGElement>(".scrollbars");
@@ -302,9 +355,7 @@ export default function NetIncomeChartD3({ data, forecast, height = 300, xDomain
                     </div>
                 </div>
             )}
-            <div className="flex gap-4 justify-center mt-8 text-xs text-gray-500">
-                <div className="flex items-center gap-1"><span className="w-3 h-3 bg-teal-500 rounded-sm"></span> Net Income</div>
-                <div className="flex items-center gap-1"><span className="w-3 h-3 border border-teal-500 border-dashed rounded-sm"></span> Forecast</div>
+            <div className="flex gap-4 justify-center mt-2 text-xs text-gray-500 absolute bottom-0 w-full pointer-events-none" style={{ bottom: "-20px" }}>
             </div>
         </div>
     );

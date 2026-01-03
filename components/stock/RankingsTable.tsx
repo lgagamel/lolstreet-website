@@ -92,7 +92,7 @@ export default function RankingsTable({ rows }: Props) {
     }
 
     const header = (metric: SortMetric, label: string, tooltip?: { text: string; preference: "high" | "low" | "neutral" }) => (
-        <div className="group relative flex items-center gap-1 cursor-pointer" onClick={() => toggle(metric)}>
+        <div className="group relative flex items-center gap-1.5 cursor-pointer" onClick={() => toggle(metric)}>
             <span
                 className={`text-xs font-semibold uppercase tracking-wider transition-colors ${sort.metric === metric
                     ? "text-indigo-600 dark:text-indigo-400"
@@ -107,17 +107,25 @@ export default function RankingsTable({ rows }: Props) {
                 </span>
             )}
 
+            {/* Question Mark Icon */}
+            {tooltip && (
+                <span className="text-gray-400 hover:text-indigo-500 transition-colors text-sm">
+                    ❓
+                </span>
+            )}
+
             {/* Tooltip */}
             {tooltip && (
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-gray-900 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100]">
-                    <p className="mb-1">{tooltip.text}</p>
-                    <p className={`font-bold ${tooltip.preference === "high" ? "text-green-400" :
-                        tooltip.preference === "low" ? "text-green-400" : "text-gray-400"
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-72 p-4 bg-gradient-to-br from-indigo-600 to-purple-600 text-white text-sm rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none z-[100] border-2 border-indigo-400">
+                    <p className="mb-2 leading-relaxed">{tooltip.text}</p>
+                    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${tooltip.preference === "high" ? "bg-green-500/20 text-green-200 border border-green-400" :
+                        tooltip.preference === "low" ? "bg-green-500/20 text-green-200 border border-green-400" :
+                            "bg-gray-500/20 text-gray-200 border border-gray-400"
                         }`}>
-                        {tooltip.preference === "high" ? "Higher is better" :
-                            tooltip.preference === "low" ? "Lower is better" : "Reference Value"}
-                    </p>
-                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                        {tooltip.preference === "high" ? "📈 Higher is better" :
+                            tooltip.preference === "low" ? "📉 Lower is better" : "📊 Reference Value"}
+                    </div>
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-indigo-600"></div>
                 </div>
             )}
         </div>
@@ -195,13 +203,13 @@ export default function RankingsTable({ rows }: Props) {
                             <th className="py-3 px-6 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-16">Rank</th>
                             <th className="py-3 px-6 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Asset</th>
                             <th className="py-3 px-6 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Close Price</th>
-                            <th className="py-3 px-6 text-left">{header("eps_yoy_growth_avg_last4q_pct", "EPS Growth (1Y)", { text: "Avg YoY EPS growth (last 4 quarters)", preference: "high" })}</th>
-                            <th className="py-3 px-6 text-left">{header("pe_mid_used", "1Y Mid PE", { text: "Median PE ratio over last year used for projections", preference: "neutral" })}</th>
-                            <th className="py-3 px-6 text-left">{header("current_pe", "Current PE", { text: "Current Price-to-Earnings ratio", preference: "low" })}</th>
-                            <th className="py-3 px-6 text-left">{header("current_pe_gap_pct", "PE Gap", { text: "Gap between Current PE and 1Y Mid PE", preference: "low" })}</th>
-                            <th className="py-3 px-6 text-left">{header("ret_6m_pct", "6M Return", { text: "Estimated 6-month model return", preference: "high" })}</th>
-                            <th className="py-3 px-6 text-left">{header("ret_1y_pct", "1Y Return", { text: "Estimated 1-year model return", preference: "high" })}</th>
-                            <th className="py-3 px-6 text-left">{header("ret_2y_pct", "2Y Return", { text: "Estimated 2-year model return", preference: "high" })}</th>
+                            <th className="py-3 px-6 text-left">{header("eps_yoy_growth_avg_last4q_pct", "EPS Growth (1Y)", { text: "🍰 How much BIGGER is each person's slice of the profit pie compared to last year? This shows if the company is earning MORE money per share!", preference: "high" })}</th>
+                            <th className="py-3 px-6 text-left">{header("pe_mid_used", "1Y Mid PE", { text: "🏷️ The 'typical price tag' investors paid for this stock over the last year. Think of it as the average sticker price!", preference: "neutral" })}</th>
+                            <th className="py-3 px-6 text-left">{header("current_pe", "Current PE", { text: "🏷️ How many years of profit you're paying for TODAY. Like buying a lemonade stand: if it earns $5/year and costs $50, the PE is 10 (you'd wait 10 years to break even).", preference: "low" })}</th>
+                            <th className="py-3 px-6 text-left">{header("current_pe_gap_pct", "PE Gap", { text: "💰 Is this stock ON SALE or OVERPRICED? Negative (green) = Cheaper than usual! Positive (red) = More expensive than usual!", preference: "low" })}</th>
+                            <th className="py-3 px-6 text-left">{header("ret_6m_pct", "6M Return", { text: "📈 Our crystal ball prediction: How much your money could grow in 6 months if our model is right! (Not guaranteed, just an estimate!)", preference: "high" })}</th>
+                            <th className="py-3 px-6 text-left">{header("ret_1y_pct", "1Y Return", { text: "📈 Our 1-year prediction: If you invested $100 today, how much could it become in a year? (Based on our model, not a promise!)", preference: "high" })}</th>
+                            <th className="py-3 px-6 text-left">{header("ret_2y_pct", "2Y Return", { text: "📈 Our 2-year prediction: The long game! How much could your investment grow if you wait 2 whole years? (Model estimate only!)", preference: "high" })}</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">

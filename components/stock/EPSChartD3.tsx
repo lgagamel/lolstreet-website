@@ -64,6 +64,17 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
             svgRef.current = svg;
 
             const defs = svg.append("defs");
+
+            // Positive Gradient
+            const gradPos = defs.append("linearGradient").attr("id", "gradientEPSPos").attr("x1", "0").attr("y1", "0").attr("x2", "0").attr("y2", "1");
+            gradPos.append("stop").attr("offset", "0%").attr("stop-color", "#34d399"); // Emerald-400
+            gradPos.append("stop").attr("offset", "100%").attr("stop-color", "#059669"); // Emerald-600
+
+            // Negative Gradient
+            const gradNeg = defs.append("linearGradient").attr("id", "gradientEPSNeg").attr("x1", "0").attr("y1", "0").attr("x2", "0").attr("y2", "1");
+            gradNeg.append("stop").attr("offset", "0%").attr("stop-color", "#fb7185"); // Rose-400
+            gradNeg.append("stop").attr("offset", "100%").attr("stop-color", "#e11d48"); // Rose-600
+
             const pattern = defs.append("pattern")
                 .attr("id", "stripe-pattern")
                 .attr("patternUnits", "userSpaceOnUse")
@@ -153,8 +164,8 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
             .attr("y", (d) => y(Math.max(0, d.reportedEPS || 0)))
             .attr("width", barWidth)
             .attr("height", (d) => Math.abs(y(d.reportedEPS || 0) - y(0)))
-            .attr("fill", (d) => (d.reportedEPS && d.reportedEPS >= 0 ? "#10b981" : "#ef4444"))
-            .attr("rx", 2);
+            .attr("fill", (d) => (d.reportedEPS && d.reportedEPS >= 0 ? "url(#gradientEPSPos)" : "url(#gradientEPSNeg)"))
+            .attr("rx", 3);
 
         barsLayer.selectAll(".point-est")
             .data(data)
@@ -185,6 +196,55 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
             .attr("stroke-width", 1.5)
             .attr("rx", 2)
             .style("stroke-dasharray", "4 2"); // Dashed outline to indicate estimate
+
+        // Professional Box Legend
+        mainG.select(".legend-box").remove();
+        const lg = mainG.append("g").attr("class", "legend-box").attr("transform", "translate(16, 10)");
+
+        const legendItems = [
+            { label: "Reported", type: "reported", color: "#10b981" },
+            { label: "Forecast", type: "forecast", color: "#6366f1" }
+        ];
+
+        if (data.length > 0 || forecast.length > 0) {
+            const itemHeight = 18;
+            const padding = 10;
+            const boxWidth = 90;
+            const boxHeight = legendItems.length * itemHeight + padding * 2;
+
+            // Background
+            lg.append("rect")
+                .attr("width", boxWidth)
+                .attr("height", boxHeight)
+                .attr("rx", 6)
+                .attr("fill", "white")
+                .attr("fill-opacity", 0.8)
+                .attr("stroke", "#e5e7eb")
+                .attr("stroke-width", 1)
+                .style("filter", "drop-shadow(0 1px 2px rgb(0 0 0 / 0.1))");
+
+            // Items
+            legendItems.forEach((item, i) => {
+                const g = lg.append("g").attr("transform", `translate(${padding}, ${padding + i * itemHeight + 9})`);
+
+                if (item.type === 'reported') {
+                    g.append("circle").attr("r", 4).attr("fill", item.color);
+                } else {
+                    g.append("circle")
+                        .attr("r", 4)
+                        .attr("fill", "white")
+                        .attr("stroke", item.color)
+                        .attr("stroke-width", 1.5)
+                        .attr("stroke-dasharray", "2 2");
+                }
+
+                g.append("text")
+                    .attr("x", 12).attr("y", 4)
+                    .attr("font-size", "11px").attr("font-weight", "500").attr("font-family", "monospace")
+                    .attr("fill", "#374151")
+                    .text(item.label);
+            });
+        }
 
         // --- Scrollbar Logic ---
         const scrollG = mainG.select<SVGGElement>(".scrollbars");
@@ -400,7 +460,7 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
                     style={{
                         top: 0,
                         left: 0,
-                        transform: `translate(${Math.min(tooltip.x + 15, containerRef.current!.clientWidth - 150)}px, ${tooltip.y}px)`
+                        transform: `translate(${Math.min(tooltip.x + 15, containerRef.current!.clientWidth - 150)}px, ${tooltip.y}px) translateY(-100%) translateY(-10px)`
                     }}
                 >
                     <div className="mb-1 font-mono text-gray-500">{tooltip.data.date}</div>
@@ -431,16 +491,7 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
             )}
             <div className="flex gap-4 justify-center mt-2 text-xs text-gray-500 absolute bottom-0 w-full pointer-events-none" style={{ bottom: "-20px" }}>
             </div>
-            <div className="flex gap-4 justify-center mt-8 text-xs text-gray-500">
-                <div className="flex items-center gap-1">
-                    <span className="w-3 h-3 bg-emerald-500 rounded-sm"></span> Reported
-                </div>
-                <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-indigo-500 border border-white"></span> Est
-                </div>
-                <div className="flex items-center gap-1">
-                    <span className="w-3 h-3 border border-indigo-500 border-dashed rounded-sm"></span> Model Forecast
-                </div>
+            <div className="flex gap-4 justify-center mt-2 text-xs text-gray-500 absolute bottom-0 w-full pointer-events-none" style={{ bottom: "-20px" }}>
             </div>
         </div>
     );

@@ -17,7 +17,9 @@ export interface StockReturnSummaryRow {
 
     mid_2y: number | null;
     ret_2y_pct: number | null;
+    pe_low_used: number | null;
     pe_mid_used: number | null;
+    pe_high_used: number | null;
     current_pe: number | null;
     current_pe_gap_pct: number | null;
     eps_yoy_growth_avg_last4q_pct: number | null;
@@ -31,6 +33,7 @@ export interface StockFinanceRow {
     reportedDate: string;
     reportedEPS: number | null;
     estimatedEPS: number | null;
+    commonStockSharesOutstanding: number | null;
     operatingCashflow: number | null;
     capitalExpenditures: number | null;
     freeCashFlow: number | null;
@@ -72,4 +75,11 @@ export interface StockDailyRow {
 
     pe_band_window_start: string;
     pe_band_window_end: string;
+}
+
+// data/news/{TICKER}.csv
+export interface NewsEvent {
+    date: string;
+    headline_short: string;
+    source: string;
 }
