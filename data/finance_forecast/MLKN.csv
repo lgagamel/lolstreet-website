@@ -1,0 +1,2 @@
+ticker,company_name,reportedDate,fiscalDateEnding,estimatedEPS,currency,timeOfTheDay,horizon_used,pulled_on
+MLKN,MILLERKNOLL INC,2026-04-01,2026-02-28,0.4133,USD,nan,12month,2026-01-07

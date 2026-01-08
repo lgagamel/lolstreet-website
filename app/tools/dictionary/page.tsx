@@ -41,8 +41,8 @@ export default function DictionaryPage() {
             <div className="max-w-6xl mx-auto space-y-12">
                 {/* Header */}
                 <div className="text-center space-y-4">
-                    <h1 className="text-5xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-pink-600">
-                        Investment Dictionary for Kids 📚
+                    <h1 className="text-5xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-pink-600 leading-tight pb-2">
+                        Investment Dictionary Made Simple 📚
                     </h1>
                     <p className="text-xl text-gray-600 dark:text-gray-300">
                         Learn the secret language of Wall Street! 🎓

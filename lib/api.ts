@@ -60,6 +60,7 @@ export async function getRankings(sortMetric: SortMetric = "ret_1y_pct"): Promis
             ticker: clean(r[it("ticker")]),
             current_date: clean(r[it("current_date")]),
             current_close: toNumberOrNaN(r[it("current_close")]),
+            market_cap: toNumberOrNull(r[it("market_cap")]),
             note: clean(r[it("note")]),
 
             mid_6m: toNumberOrNull(r[it("mid_6m")]),
@@ -75,7 +76,7 @@ export async function getRankings(sortMetric: SortMetric = "ret_1y_pct"): Promis
             pe_high_used: toNumberOrNull(r[it("pe_high_used")]),
             current_pe: toNumberOrNull(r[it("current_pe")]),
             current_pe_gap_pct: toNumberOrNull(r[it("current_pe_gap_pct")]),
-            eps_yoy_growth_avg_last4q_pct: toNumberOrNull(r[it("eps_yoy_growth_avg_last4q_pct")]),
+            eps_yoy_growth_avg_last4q_pct: toNumberOrNull(r[it("eps_ttm_yoy_pct")]),
         }))
         .filter((x) => x.ticker.length > 0);
 
@@ -178,7 +179,7 @@ export async function getFinanceForecast(ticker: string): Promise<import("../typ
             fiscalDateEnding: clean(r[it("fiscalDateEnding")]),
             reportedDate: clean(r[it("reportedDate")]),
             revenue_forecast: toNumberOrNull(r[it("revenue_forecast")]),
-            eps_forecast: toNumberOrNull(r[it("eps_forecast")]),
+            eps_forecast: toNumberOrNull(r[it("eps_forecast")]) ?? toNumberOrNull(r[it("estimatedEPS")]),
             netIncome_forecast: toNumberOrNull(r[it("netIncome_forecast")]),
             report_lag_days_used: toNumberOrNull(r[it("report_lag_days_used")]),
         })).filter(x => x.reportedDate.length > 0);

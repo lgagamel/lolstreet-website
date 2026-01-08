@@ -1,6 +1,5 @@
 import { getRankings } from "@/lib/api";
-import RankingsTable from "@/components/stock/RankingsTable";
-import MarketScatterPlotD3 from "@/components/stock/MarketScatterPlotD3";
+import DashboardClient from "@/components/stock/DashboardClient";
 
 export const revalidate = 3600; // revalidate every hour
 
@@ -22,11 +21,7 @@ export default async function Home() {
           </p>
         </div>
 
-        {/* Rankings Table */}
-        <RankingsTable rows={csvData} />
-
-        {/* Scatter Plot */}
-        <MarketScatterPlotD3 data={csvData} />
+        <DashboardClient data={csvData} />
       </div>
 
       {/* Footer */}

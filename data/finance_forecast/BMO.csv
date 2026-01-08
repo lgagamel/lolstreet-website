@@ -1,0 +1,2 @@
+ticker,company_name,reportedDate,fiscalDateEnding,estimatedEPS,currency,timeOfTheDay,horizon_used,pulled_on
+BMO,BANK OF MONTREAL,2026-02-24,2026-01-31,2.34,CAD,nan,12month,2026-01-07

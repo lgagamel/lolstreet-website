@@ -1,27 +1,43 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import CompoundInterestChartD3, { CompoundDataPoint } from "@/components/tools/CompoundInterestChartD3";
 
-// Determine emoji based on wealth
-const getWealthEmoji = (amount: number) => {
-    if (amount < 1000) return "🌱"; // Seed
-    if (amount < 10000) return "🌿"; // Plant
-    if (amount < 50000) return "🌳"; // Tree
-    if (amount < 100000) return "🍎"; // Fruit
-    if (amount < 500000) return "🏠"; // House
-    if (amount < 1000000) return "🏎️"; // Lambo
-    if (amount < 10000000) return "🚀"; // Rocket
-    return "🪐"; // Planet
+// Determine item based on investment amount with realistic prices
+const getInvestmentItem = (amount: number): { emoji: string; name: string; price: number } => {
+    if (amount < 15) return { emoji: "🍕", name: "Pizza", price: 10 };
+    if (amount < 35) return { emoji: "📚", name: "Book", price: 25 };
+    if (amount < 75) return { emoji: "🎮", name: "Video Game", price: 60 };
+    if (amount < 150) return { emoji: "👟", name: "Sneakers", price: 120 };
+    if (amount < 350) return { emoji: "🎧", name: "Headphones", price: 250 };
+    if (amount < 750) return { emoji: "⌚", name: "Watch", price: 500 };
+    if (amount < 1250) return { emoji: "📱", name: "Phone", price: 1000 };
+    if (amount < 2500) return { emoji: "💻", name: "Laptop", price: 2000 };
+    if (amount < 6000) return { emoji: "🖥️", name: "Gaming PC", price: 4000 };
+    if (amount < 12500) return { emoji: "🏍️", name: "Motorcycle", price: 10000 };
+    if (amount < 30000) return { emoji: "🚗", name: "Used Car", price: 25000 };
+    if (amount < 60000) return { emoji: "🚙", name: "New Car", price: 50000 };
+    if (amount < 125000) return { emoji: "⛵", name: "Boat", price: 100000 };
+    if (amount < 200000) return { emoji: "🏠", name: "Down Payment", price: 150000 };
+    if (amount < 400000) return { emoji: "🏡", name: "Small House", price: 300000 };
+    if (amount < 750000) return { emoji: "🏘️", name: "House", price: 600000 };
+    if (amount < 1500000) return { emoji: "🏰", name: "Large House", price: 1000000 };
+    return { emoji: "🏢", name: "Building", price: 2000000 };
 };
 
 export default function CompoundInterestPage() {
     // State
     const [principal, setPrincipal] = useState(10000);
-    const [monthlyContribution, setMonthlyContribution] = useState(500);
+    const [monthlyContribution, setMonthlyContribution] = useState(0);
     const [years, setYears] = useState(20);
     const [rate, setRate] = useState(8); // Annual return %
     const [frequency, setFrequency] = useState<"yearly" | "monthly" | "daily">("yearly");
+
+    // Animation state
+    const [animatedYear, setAnimatedYear] = useState(0);
+    const [animatedTotal, setAnimatedTotal] = useState(principal);
+    const [animatedPrincipal, setAnimatedPrincipal] = useState(principal);
+    const [animatedInterest, setAnimatedInterest] = useState(0);
 
     // Calculation Logic
     const resultData = useMemo(() => {
@@ -87,15 +103,34 @@ export default function CompoundInterestPage() {
 
     const finalResult = resultData[resultData.length - 1];
 
+    // Get item based on INITIAL investment
+    const initialItem = getInvestmentItem(principal);
+
+    // Calculate multiplier and current item
+    const multiplier = animatedTotal / initialItem.price;
+    const currentAnimatedYear = Math.floor(animatedYear);
+    const currentAnimatedDay = Math.floor((animatedYear % 1) * 365);
+
+    // Handle animation updates (wrapped in useCallback to prevent infinite loops)
+    const handleAnimationUpdate = useCallback((year: number, total: number, principalVal: number, interest: number) => {
+        setAnimatedYear(year);
+        setAnimatedTotal(total);
+        setAnimatedPrincipal(principalVal);
+        setAnimatedInterest(interest);
+    }, []);
+
     return (
         <main className="min-h-screen bg-gray-50 dark:bg-black text-gray-900 dark:text-white p-8">
             <div className="max-w-6xl mx-auto space-y-12">
                 <div className="text-center space-y-4">
                     <h1 className="text-5xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 to-green-500">
-                        Visualizing Compound Growth 💸
+                        Investment Growth Calculator 💰
                     </h1>
                     <p className="text-xl text-gray-600 dark:text-gray-400">
-                        See how money makes money over time.
+                        See how your money could grow with ANY investment - stocks, real estate, or anything else!
+                    </p>
+                    <p className="text-sm text-gray-500 dark:text-gray-500 max-w-3xl mx-auto">
+                        Choose an expected annual return rate below, or use our benchmarks and model estimates as a starting point.
                     </p>
                 </div>
 
@@ -115,7 +150,7 @@ export default function CompoundInterestPage() {
                                 />
                             </div>
                             <input
-                                type="range" min="0" max="100000" step="1000"
+                                type="range" min="0" max="1000000" step="100"
                                 value={principal} onChange={(e) => setPrincipal(Number(e.target.value))}
                                 className="w-full accent-indigo-500"
                             />
@@ -155,6 +190,65 @@ export default function CompoundInterestPage() {
                                 <span>Conservative (4%)</span>
                                 <span>S&P 500 (10%)</span>
                                 <span>Aggressive (20%)</span>
+                            </div>
+
+                            {/* Benchmark Presets */}
+                            <div className="pt-4 space-y-3">
+                                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">📊 Benchmarks</div>
+                                <div className="flex flex-wrap gap-2">
+                                    <button
+                                        onClick={() => setRate(10)}
+                                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors border border-blue-200 dark:border-blue-800"
+                                    >
+                                        S&P 500 (10%)
+                                    </button>
+                                    <button
+                                        onClick={() => setRate(5)}
+                                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors border border-amber-200 dark:border-amber-800"
+                                    >
+                                        Real Estate (5%)
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Stock Model Estimates */}
+                            <div className="pt-2 space-y-3">
+                                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">🎯 Model Estimates (1Y)</div>
+                                <div className="flex flex-wrap gap-2">
+                                    <button
+                                        onClick={() => setRate(149.86)}
+                                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors border border-purple-200 dark:border-purple-800"
+                                    >
+                                        PLTR (149.9%)
+                                    </button>
+                                    <button
+                                        onClick={() => setRate(61.68)}
+                                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors border border-green-200 dark:border-green-800"
+                                    >
+                                        NVDA (61.7%)
+                                    </button>
+                                    <button
+                                        onClick={() => setRate(29.51)}
+                                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition-colors border border-indigo-200 dark:border-indigo-800"
+                                    >
+                                        META (29.5%)
+                                    </button>
+                                    <button
+                                        onClick={() => setRate(16.73)}
+                                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-200 dark:hover:bg-cyan-900/50 transition-colors border border-cyan-200 dark:border-cyan-800"
+                                    >
+                                        MSFT (16.7%)
+                                    </button>
+                                    <button
+                                        onClick={() => setRate(15.28)}
+                                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors border border-gray-200 dark:border-gray-600"
+                                    >
+                                        AAPL (15.3%)
+                                    </button>
+                                </div>
+                                <p className="text-xs text-gray-400 italic">
+                                    💡 These are model estimates, not guarantees!
+                                </p>
                             </div>
                         </div>
 
@@ -198,7 +292,7 @@ export default function CompoundInterestPage() {
                             <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-3xl p-8 text-white shadow-lg transform hover:scale-105 transition-transform duration-300">
                                 <div className="text-indigo-100 font-medium mb-1">Total Contributions</div>
                                 <div className="text-4xl font-bold tracking-tight">
-                                    ${finalResult.principal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                    ${animatedPrincipal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </div>
                                 <div className="mt-4 text-sm opacity-80 bg-white/10 inline-block px-3 py-1 rounded-full">
                                     Your Hard Work 💪
@@ -206,9 +300,9 @@ export default function CompoundInterestPage() {
                             </div>
 
                             <div className="bg-gradient-to-br from-green-500 to-emerald-700 rounded-3xl p-8 text-white shadow-lg transform hover:scale-105 transition-transform duration-300">
-                                <div className="text-green-100 font-medium mb-1">Total Interest Earned</div>
+                                <div className="text-green-100 font-medium mb-1">Investment Growth</div>
                                 <div className="text-4xl font-bold tracking-tight">
-                                    ${finalResult.interest.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                    ${animatedInterest.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </div>
                                 <div className="mt-4 text-sm opacity-80 bg-white/10 inline-block px-3 py-1 rounded-full">
                                     Money Working for You 🛌
@@ -220,20 +314,33 @@ export default function CompoundInterestPage() {
                         <div className="bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-3xl p-8 text-center shadow-2xl relative overflow-hidden group">
                             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
 
-                            <div className="text-lg opacity-60 font-medium uppercase tracking-widest mb-2">Portfolio Value in {new Date().getFullYear() + years}</div>
+                            <div className="text-lg opacity-60 font-medium uppercase tracking-widest mb-2">
+                                Year {currentAnimatedYear}, Day {currentAnimatedDay}
+                            </div>
                             <div className="text-5xl md:text-7xl font-black tracking-tighter mb-4 break-words px-4">
-                                ${finalResult.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                ${animatedTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                             </div>
 
-                            <div className="text-6xl animate-bounce">
-                                {getWealthEmoji(finalResult.total)}
+                            <div className="text-4xl mb-1">
+                                {multiplier.toFixed(1)}× {initialItem.emoji}
+                            </div>
+                            <div className="text-sm opacity-70 mb-2">
+                                ({initialItem.name} @ ${initialItem.price.toLocaleString()})
+                            </div>
+                            <div className="text-sm opacity-60">
+                                {multiplier >= 2 ? "You multiplied your investment!" : "Growing your wealth..."}
                             </div>
                         </div>
 
                         {/* Chart */}
                         <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800 shadow-xl">
                             <h3 className="text-lg font-bold mb-6 text-gray-500">Growth Trajectory</h3>
-                            <CompoundInterestChartD3 data={resultData} />
+                            <CompoundInterestChartD3
+                                data={resultData}
+                                initialItemEmoji={initialItem.emoji}
+                                initialItemPrice={initialItem.price}
+                                onAnimationUpdate={handleAnimationUpdate}
+                            />
                         </div>
                     </div>
                 </div>

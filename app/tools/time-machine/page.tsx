@@ -16,7 +16,7 @@ interface ProductPreset {
 const PRESETS: ProductPreset[] = [
     { id: "iphone", emoji: "📱", name: "Original iPhone", ticker: "AAPL", date: "2007-06-29", price: 499 },
     { id: "model-s", emoji: "🚗", name: "Tesla Model S", ticker: "TSLA", date: "2012-06-22", price: 57400 },
-    { id: "pltr", emoji: "🔮", name: "Cash", ticker: "PLTR", date: "2021-05-11", price: 1000 },
+    { id: "pltr", emoji: "💵", name: "Cash", ticker: "PLTR", date: "2021-05-11", price: 1000 },
     { id: "gtx1080", emoji: "💻", name: "Nvidia GTX 1080", ticker: "NVDA", date: "2016-05-27", price: 599 },
     { id: "oculus", emoji: "🥽", name: "Oculus Rift", ticker: "META", date: "2016-03-28", price: 599 },
     { id: "google-glass", emoji: "👓", name: "Google Glass", ticker: "GOOG", date: "2013-04-15", price: 1500 },

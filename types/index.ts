@@ -1,6 +1,6 @@
 // types/index.ts
 
-export type SortMetric = "ret_6m_pct" | "ret_1y_pct" | "ret_2y_pct" | "pe_mid_used" | "eps_yoy_growth_avg_last4q_pct" | "current_pe" | "current_pe_gap_pct";
+export type SortMetric = "ret_6m_pct" | "ret_1y_pct" | "ret_2y_pct" | "pe_mid_used" | "eps_yoy_growth_avg_last4q_pct" | "current_pe" | "current_pe_gap_pct" | "market_cap" | "current_close" | "ticker";
 
 // data/summary/stock_return_summary.csv
 export interface StockReturnSummaryRow {
@@ -23,6 +23,7 @@ export interface StockReturnSummaryRow {
     current_pe: number | null;
     current_pe_gap_pct: number | null;
     eps_yoy_growth_avg_last4q_pct: number | null;
+    market_cap: number | null;
 }
 
 // data/finance/{TICKER}.csv

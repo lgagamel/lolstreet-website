@@ -7,7 +7,7 @@ import type { StockFinanceRow, StockFinanceForecastRow } from "../../types";
 
 interface Props {
     data: StockFinanceRow[];
-    forecast: StockFinanceForecastRow[];
+    // forecast removed
     height?: number;
     xDomain?: [Date, Date];
     onXDomainChange?: (domain: [Date, Date]) => void;
@@ -22,7 +22,7 @@ function formatValue(v: number | null): string {
     return `$${v.toFixed(0)}`;
 }
 
-export default function NetIncomeChartD3({ data, forecast, height = 300, xDomain, onXDomainChange }: Props) {
+export default function NetIncomeChartD3({ data, height = 300, xDomain, onXDomainChange }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
     const svgRef = useRef<d3.Selection<SVGSVGElement, unknown, null, undefined> | null>(null);
     const [tooltip, setTooltip] = useState<{
@@ -32,27 +32,26 @@ export default function NetIncomeChartD3({ data, forecast, height = 300, xDomain
         data?: { date: string; value: number; type: 'reported' | 'forecast' };
     }>({ visible: false, x: 0, y: 0 });
 
+    // Refs for Drag Handlers
+    const xDomainRef = useRef<[Date, Date] | null>(null);
+    const yDomainRef = useRef<[number, number] | null>(null);
+    const dragContextX = useRef<{ startX: number, domain: [Date, Date] } | null>(null);
+    const dragContextY = useRef<{ startY: number, domain: [number, number] } | null>(null);
+
     // Y-Axis State
     const [yDomain, setYDomain] = useState<[number, number] | null>(null);
 
     // Initial Y Domain Calculation
-    useEffect(() => {
-        if (!data.length && !forecast.length) return;
-        const allVals = [
-            ...data.map(d => d.netIncome || 0),
-            ...forecast.map(f => f.netIncome_forecast || 0)
-        ];
-        const yMax = d3.max(allVals) || 1;
-        const yMin = d3.min(allVals) || 0;
-        setYDomain([Math.min(0, yMin), yMax * 1.1]);
-    }, [data, forecast]);
+    // Initial Y Domain Calculation removed to allow dynamic scaling
+    // useEffect(() => { ... }, [data]);
 
     useEffect(() => {
-        if (!containerRef.current || (!data.length && !forecast.length)) return;
+        if (!containerRef.current || !data.length) return;
 
         const width = containerRef.current.clientWidth;
         const h = height;
-        const margin = { top: 20, right: 80, left: 10, bottom: 50 };
+        // Margins: Left Y-axis, No Scrollbars
+        const margin = { top: 20, right: 30, left: 60, bottom: 50 };
         const innerWidth = width - margin.left - margin.right;
         const innerHeight = h - margin.top - margin.bottom;
 
@@ -76,10 +75,14 @@ export default function NetIncomeChartD3({ data, forecast, height = 300, xDomain
             const mainG = svg.append("g").attr("class", "main-g");
             mainG.append("rect").attr("class", "zoom-capture").attr("fill", "transparent");
             mainG.append("g").attr("class", "grid-lines opacity-10");
-            mainG.append("g").attr("class", "bars-layer").attr("clip-path", "url(#clip-net-income)");
-            mainG.append("g").attr("class", "axis-x");
-            mainG.append("g").attr("class", "axis-y");
-            mainG.append("g").attr("class", "scrollbars");
+            mainG.append("g").attr("class", "bars-layer").attr("clip-path", "url(#clip-net-income)").style("pointer-events", "none");
+            mainG.append("g").attr("class", "price-line").attr("clip-path", "url(#clip-net-income)").style("pointer-events", "none");
+
+            // Axes
+            // Axes
+            const xAxisG = mainG.append("g").attr("class", "axis-x");
+            const yAxisG = mainG.append("g").attr("class", "axis-y");
+            mainG.append("g").attr("class", "scroll-layer");
         }
 
         const svg = svgRef.current!;
@@ -89,8 +92,7 @@ export default function NetIncomeChartD3({ data, forecast, height = 300, xDomain
 
         // X scale
         const allDates = [
-            ...data.map(d => new Date(d.reportedDate)),
-            ...forecast.map(d => new Date(d.reportedDate))
+            ...data.map(d => new Date(d.reportedDate))
         ];
         const xExt = d3.extent(allDates) as [Date, Date];
         let currentXDomain = xDomain;
@@ -101,22 +103,50 @@ export default function NetIncomeChartD3({ data, forecast, height = 300, xDomain
         }
         const x = d3.scaleTime().domain(currentXDomain).range([0, innerWidth]);
 
-        // Y scale
-        const yMaxAll = d3.max([...data.map(d => d.netIncome || 0), ...forecast.map(f => f.netIncome_forecast || 0)]) || 1;
-        const fullYDomain: [number, number] = [0, yMaxAll * 1.5];
-        const currentYDomain = yDomain || [0, yMaxAll * 1.1];
+        // Calculate Y domain based on visible data in the X range
+        const calculateYDomain = (): [number, number] => {
+            if (yDomain) return yDomain;
+
+            const visibleData = data.filter(d => {
+                const date = new Date(d.reportedDate);
+                return date >= currentXDomain[0] && date <= currentXDomain[1];
+            });
+
+            if (visibleData.length === 0) return [0, 1];
+
+            const values = visibleData.map(d => d.netIncome || 0).filter(v => v !== 0);
+            if (values.length === 0) return [0, 1];
+
+            const maxVal = Math.max(...values);
+            const minVal = Math.min(...values);
+
+            // Handle negative values properly
+            const absMax = Math.max(Math.abs(maxVal), Math.abs(minVal));
+            const yMax = maxVal > 0 ? maxVal * 1.1 : maxVal * 0.9; // Add headroom above
+            const yMin = minVal < 0 ? minVal * 1.1 : 0; // Add headroom below if negative
+
+            return [Math.min(0, yMin), Math.max(1, yMax)];
+        };
+        const currentYDomain: [number, number] = calculateYDomain();
+
+        // Update Refs
+        xDomainRef.current = currentXDomain;
+        yDomainRef.current = currentYDomain;
         const y = d3.scaleLinear().domain(currentYDomain).range([innerHeight, 0]);
 
         // Axes
+        const xAxis = d3.axisBottom(x).tickSize(0).tickPadding(10);
+        const yAxis = d3.axisLeft(y).ticks(6).tickSize(0).tickPadding(10).tickFormat(d => formatValue(d as number));
+
         mainG.select<SVGGElement>(".axis-x")
             .attr("transform", `translate(0,${innerHeight})`)
-            .call(d3.axisBottom(x).ticks(6).tickSize(0).tickPadding(10))
+            .call(xAxis)
             .attr("class", "axis-x text-xs font-mono text-gray-500")
             .select(".domain").remove();
 
         mainG.select<SVGGElement>(".axis-y")
-            .attr("transform", `translate(${innerWidth}, 0)`)
-            .call(d3.axisRight(y).ticks(5).tickSize(0).tickPadding(10).tickFormat(d => formatValue(d as number)))
+            .attr("transform", `translate(0, 0)`)
+            .call(yAxis)
             .attr("class", "axis-y text-xs font-mono text-gray-500")
             .select(".domain").remove();
 
@@ -127,7 +157,7 @@ export default function NetIncomeChartD3({ data, forecast, height = 300, xDomain
         mainG.select(".grid-lines").select(".domain").remove();
 
         // Bars
-        const barWidth = Math.max(4, innerWidth / ((data.length + forecast.length) * 3));
+        const barWidth = Math.max(4, innerWidth / ((data.length) * 3));
         const barsLayer = mainG.select(".bars-layer");
         barsLayer.selectAll("*").remove();
 
@@ -144,32 +174,17 @@ export default function NetIncomeChartD3({ data, forecast, height = 300, xDomain
             .attr("fill", "#14b8a6")
             .attr("rx", 2);
 
-        // Fore
-        barsLayer.selectAll(".bar-forecast")
-            .data(forecast)
-            .enter()
-            .append("rect")
-            .attr("class", "bar-forecast")
-            .attr("x", d => x(new Date(d.reportedDate)) - barWidth / 2)
-            .attr("y", d => y(Math.max(0, d.netIncome_forecast || 0)))
-            .attr("width", barWidth)
-            .attr("height", d => Math.abs(y(d.netIncome_forecast || 0) - y(0)))
-            .attr("fill", "transparent")
-            .attr("stroke", "#14b8a6")
-            .attr("stroke-width", 1.5)
-            .attr("rx", 2)
-            .style("stroke-dasharray", "4 2");
+        // Forecast bars removed
 
         // Professional Box Legend
         mainG.select(".legend-box").remove();
         const lg = mainG.append("g").attr("class", "legend-box").attr("transform", "translate(16, 10)");
 
         const legendItems = [
-            { label: "Net Income", type: "reported", color: "#14b8a6" },
-            { label: "Forecast", type: "forecast", color: "#14b8a6" }
+            { label: "Net Income", type: "reported", color: "#14b8a6" }
         ];
 
-        if (data.length > 0 || forecast.length > 0) {
+        if (data.length > 0) {
             const itemHeight = 18;
             const padding = 10;
             const boxWidth = 95; // Slightly wider for "Net Income"
@@ -209,13 +224,13 @@ export default function NetIncomeChartD3({ data, forecast, height = 300, xDomain
             });
         }
 
-        // Scrollbars
-        const scrollG = mainG.select<SVGGElement>(".scrollbars");
+        // Zoom Capture & Tooltip
+        const scrollG = mainG.select<SVGGElement>(".scroll-layer");
 
         const renderScrollbar = (
             parent: d3.Selection<SVGGElement, unknown, null, undefined>,
             classSelector: string,
-            xPos: number, yPos: number,
+            x: number, y: number,
             length: number, thickness: number,
             orientation: 'horizontal' | 'vertical',
             fullDomain: [number, number],
@@ -223,6 +238,8 @@ export default function NetIncomeChartD3({ data, forecast, height = 300, xDomain
             onChange: (d: [number, number]) => void
         ) => {
             const isH = orientation === 'horizontal';
+
+            // 1. Enter
             let g = parent.select<SVGGElement>(`.${classSelector}`);
             if (g.empty()) {
                 g = parent.append("g").attr("class", classSelector);
@@ -234,19 +251,38 @@ export default function NetIncomeChartD3({ data, forecast, height = 300, xDomain
                 thumbG.append("rect").attr("class", "handle-end").attr("fill", "transparent");
             }
 
+            // 2. Logic
             const barScale = d3.scaleLinear().domain(fullDomain).range([0, length]);
             let startPos = barScale(currentDomain[0]);
             let endPos = barScale(currentDomain[1]);
-            if (startPos > endPos) [startPos, endPos] = [endPos, startPos];
-
             startPos = Math.max(0, Math.min(length, startPos));
             endPos = Math.max(0, Math.min(length, endPos));
             let thumbSize = Math.max(20, endPos - startPos);
+            if (endPos - startPos < 20) {
+                const center = (startPos + endPos) / 2;
+                startPos = center - 10;
+                if (startPos < 0) startPos = 0;
+                if (startPos + 20 > length) startPos = length - 20;
+            }
 
-            g.attr("transform", `translate(${xPos},${yPos})`);
-            g.select(".track").attr("width", isH ? length : thickness).attr("height", isH ? thickness : length).attr("rx", thickness / 2);
-            const thumbG = g.select(".thumb-group").attr("transform", isH ? `translate(${startPos}, 0)` : `translate(0, ${startPos})`);
-            const thumb = thumbG.select(".thumb").attr("width", isH ? thumbSize : thickness).attr("height", isH ? thickness : thumbSize).attr("rx", thickness / 2);
+            // 3. Update Attributes
+            g.attr("transform", `translate(${x},${y})`);
+
+            g.select(".track")
+                .attr("width", isH ? length : thickness)
+                .attr("height", isH ? thickness : length)
+                .attr("rx", thickness / 2);
+
+            const thumbG = g.select(".thumb-group")
+                .attr("transform", isH
+                    ? `translate(${startPos}, 0)`
+                    : `translate(0, ${startPos})`
+                );
+
+            const thumb = thumbG.select(".thumb")
+                .attr("width", isH ? thumbSize : thickness)
+                .attr("height", isH ? thickness : thumbSize)
+                .attr("rx", thickness / 2);
 
             const gripG = thumbG.select(".grips").html("");
             if (thumbSize > 30) {
@@ -256,6 +292,7 @@ export default function NetIncomeChartD3({ data, forecast, height = 300, xDomain
                 gripG.append("path").attr("d", gripPath).attr("stroke", "white").attr("stroke-width", 1.5).attr("opacity", 0.8);
             }
 
+            // 4. Update Interaction
             thumb.call((d3.drag<SVGRectElement, unknown>()
                 .container(g.node() as any)
                 .on("start", function (event) {
@@ -268,9 +305,16 @@ export default function NetIncomeChartD3({ data, forecast, height = 300, xDomain
                     const p = isH ? event.x : event.y;
                     // @ts-ignore
                     const offset = this.__dragOffset || 0;
-                    let ns = p - offset;
-                    ns = Math.max(0, Math.min(length - thumbSize, ns));
-                    onChange([barScale.invert(ns), barScale.invert(ns + thumbSize)]);
+                    let newStart = p - offset;
+
+                    // Pixel Clamping
+                    newStart = Math.max(0, Math.min(length - thumbSize, newStart));
+
+                    // Invert
+                    let newValStart = barScale.invert(newStart);
+                    let newValEnd = barScale.invert(newStart + thumbSize);
+
+                    onChange([newValStart, newValEnd]);
                 })
                 .on("end", function () { d3.select(this).style("cursor", "grab"); })
             ) as any);
@@ -278,25 +322,42 @@ export default function NetIncomeChartD3({ data, forecast, height = 300, xDomain
             const handleThickness = 12;
             const updateHandle = (type: 'start' | 'end') => {
                 const sel = thumbG.select(type === 'start' ? ".handle-start" : ".handle-end");
-                const xLoc = isH ? (type === 'start' ? 0 : thumbSize - handleThickness) : 0;
-                const yLoc = isH ? 0 : (type === 'start' ? 0 : thumbSize - handleThickness);
+                const xLoc = isH
+                    ? (type === 'start' ? 0 : thumbSize - handleThickness)
+                    : 0;
+                const yLoc = isH
+                    ? 0
+                    : (type === 'start' ? 0 : thumbSize - handleThickness);
                 const w = isH ? handleThickness : thickness;
                 const h = isH ? thickness : handleThickness;
+
                 sel.attr("x", xLoc).attr("y", yLoc).attr("width", w).attr("height", h)
                     .style("cursor", isH ? "ew-resize" : "ns-resize")
                     .call((d3.drag<SVGRectElement, unknown>()
                         .container(g.node() as any)
                         .on("start", function (event) {
                             const p = isH ? event.x : event.y;
+                            const edgePos = type === 'start' ? startPos : endPos;
                             // @ts-ignore
-                            this.__dragOffset = p - (type === 'start' ? startPos : endPos);
+                            this.__dragOffset = p - edgePos;
                         })
                         .on("drag", function (event) {
                             const p = isH ? event.x : event.y;
                             // @ts-ignore
-                            let nep = p - (this.__dragOffset || 0);
-                            if (type === 'start') onChange([barScale.invert(Math.max(0, Math.min(endPos - 20, nep))), currentDomain[1]]);
-                            else onChange([currentDomain[0], barScale.invert(Math.max(startPos + 20, Math.min(length, nep)))]);
+                            const offset = this.__dragOffset || 0;
+                            let newEdgePos = p - offset;
+
+                            const minPxGap = 20;
+
+                            if (type === 'start') {
+                                newEdgePos = Math.max(0, Math.min(endPos - minPxGap, newEdgePos));
+                                const val = barScale.invert(newEdgePos);
+                                onChange([val, currentDomain[1]]);
+                            } else {
+                                newEdgePos = Math.max(startPos + minPxGap, Math.min(length, newEdgePos));
+                                const val = barScale.invert(newEdgePos);
+                                onChange([currentDomain[0], val]);
+                            }
                         })
                     ) as any);
             };
@@ -304,12 +365,22 @@ export default function NetIncomeChartD3({ data, forecast, height = 300, xDomain
             updateHandle('end');
         };
 
-        const twoYearsFuture = new Date().setFullYear(new Date().getFullYear() + 2);
-        const fullX: [number, number] = [xExt[0]?.getTime() || Date.now(), Math.max(xExt[1]?.getTime() || Date.now(), twoYearsFuture)];
-        renderScrollbar(scrollG, "scrollbar-x", 0, innerHeight + 35, innerWidth, 16, 'horizontal', fullX, [currentXDomain[0].getTime(), currentXDomain[1].getTime()],
-            (d) => onXDomainChange?.([new Date(d[0]), new Date(d[1])]));
+        // xExt is already calculated at line 104
+        const maxDate = new Date(xExt[1]);
+        maxDate.setMonth(maxDate.getMonth() + 1);
+        const fullX: [number, number] = [xExt[0]?.getTime() || 0, maxDate.getTime()];
+        const fullY: [number, number] = [0, (d3.max(data, d => d.netIncome || 0) || 1) * 1.5];
 
-        renderScrollbar(scrollG, "scrollbar-y", innerWidth + 64, 0, innerHeight, 16, 'vertical', [fullYDomain[1], fullYDomain[0]], [currentYDomain[1], currentYDomain[0]], (d) => setYDomain([d[1], d[0]]));
+        renderScrollbar(scrollG, "scrollbar-x", 0, innerHeight + 35, innerWidth, 16, 'horizontal', fullX, [currentXDomain[0].getTime(), currentXDomain[1].getTime()],
+            (d) => onXDomainChange && onXDomainChange([new Date(d[0]), new Date(d[1])]));
+
+
+        renderScrollbar(scrollG, "scrollbar-y", -margin.left - 20, 0, innerHeight, 16, 'vertical', [fullY[1], fullY[0]], [currentYDomain[1], currentYDomain[0]],
+            (d) => setYDomain([d[1], d[0]]));
+
+
+
+
 
         const zoomRect = mainG.select<SVGRectElement>(".zoom-capture")
             .attr("width", innerWidth).attr("height", innerHeight)
@@ -323,21 +394,14 @@ export default function NetIncomeChartD3({ data, forecast, height = 300, xDomain
             const [mx] = d3.pointer(event);
             const date = x.invert(mx);
             const iHist = bisectHist(data, date);
-            const iFore = bisectFore(forecast, date);
             const dHist = data[iHist];
-            const dFore = forecast[iFore];
-            let best = null;
-            if (dHist && dFore) {
-                const distH = Math.abs(new Date(dHist.reportedDate).getTime() - date.getTime());
-                const distF = Math.abs(new Date(dFore.reportedDate).getTime() - date.getTime());
-                best = distH < distF ? { date: dHist.reportedDate, value: dHist.netIncome || 0, type: 'reported' as const } : { date: dFore.reportedDate, value: dFore.netIncome_forecast || 0, type: 'forecast' as const };
-            } else if (dHist) best = { date: dHist.reportedDate, value: dHist.netIncome || 0, type: 'reported' as const };
-            else if (dFore) best = { date: dFore.reportedDate, value: dFore.netIncome_forecast || 0, type: 'forecast' as const };
-
-            if (best) setTooltip({ visible: true, x: mx + margin.left, y: d3.pointer(event)[1] + margin.top, data: best });
+            if (dHist) {
+                const best = { date: dHist.reportedDate, value: dHist.netIncome || 0, type: 'reported' as const };
+                setTooltip({ visible: true, x: mx + margin.left, y: d3.pointer(event)[1] + margin.top, data: best });
+            }
         }).on("mouseleave", () => setTooltip(p => ({ ...p, visible: false })));
 
-    }, [data, forecast, height, xDomain, yDomain, onXDomainChange]);
+    }, [data, height, xDomain, yDomain, onXDomainChange]);
 
     return (
         <div className="relative w-full" ref={containerRef}>
@@ -349,8 +413,8 @@ export default function NetIncomeChartD3({ data, forecast, height = 300, xDomain
                 >
                     <div className="mb-1 font-mono text-gray-500">{tooltip.data.date}</div>
                     <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-sm ${tooltip.data.type === 'reported' ? 'bg-teal-500' : 'border border-teal-500 border-dashed'}`}></span>
-                        <span className="text-gray-600 dark:text-gray-400">{tooltip.data.type === 'reported' ? 'Net Income:' : 'Forecast:'}</span>
+                        <span className="w-2 h-2 rounded-sm bg-teal-500"></span>
+                        <span className="text-gray-600 dark:text-gray-400">Net Income:</span>
                         <span className="font-mono font-bold">{formatValue(tooltip.data.value)}</span>
                     </div>
                 </div>

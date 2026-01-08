@@ -30,23 +30,17 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
         data?: StockFinanceRow;
     }>({ visible: false, x: 0, y: 0 });
 
+    // Refs for Drag Handlers
+    const xDomainRef = useRef<[Date, Date] | null>(null);
+    const yDomainRef = useRef<[number, number] | null>(null);
+    const dragContextX = useRef<{ startX: number, domain: [Date, Date] } | null>(null);
+    const dragContextY = useRef<{ startY: number, domain: [number, number] } | null>(null);
+
     const [yDomain, setYDomain] = useState<[number, number] | null>(null);
 
     // Initial Y Domain
-    useEffect(() => {
-        if (!data.length) return;
-        // Fields: operatingCashflow, capitalExpenditures (negative), freeCashFlow
-        const vals = data.flatMap(d => [
-            d.operatingCashflow || 0,
-            d.capitalExpenditures || 0,
-            d.freeCashFlow || 0
-        ]);
-        const yMax = d3.max(vals) || 0;
-        const yMin = d3.min(vals) || 0;
-
-        // Add some padding
-        setYDomain([yMin * 1.1, yMax * 1.1]);
-    }, [data]);
+    // Initial Y Domain Calculation removed to allow dynamic scaling
+    // useEffect(() => { ... }, [data]);
 
     useEffect(() => {
         if (!containerRef.current || !data.length) return;
@@ -54,7 +48,8 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
         const container = containerRef.current;
         const width = container.clientWidth;
         const h = height;
-        const margin = { top: 20, right: 80, left: 10, bottom: 50 };
+        // Margins: Left Y-axis, No Scrollbars
+        const margin = { top: 20, right: 30, left: 60, bottom: 50 };
         const innerWidth = width - margin.left - margin.right;
         const innerHeight = h - margin.top - margin.bottom;
 
@@ -79,20 +74,25 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
             gradCapEx.append("stop").attr("offset", "100%").attr("stop-color", "#dc2626"); // Red-600
 
             defs.append("clipPath").attr("id", "clip-cf").append("rect");
+            defs.append("clipPath").attr("id", "clip-cash").append("rect"); // Added for price-line
 
             const mainG = svg.append("g").attr("class", "main-g");
             mainG.append("rect").attr("class", "zoom-capture").attr("fill", "transparent");
             mainG.append("g").attr("class", "grid-lines opacity-10");
-            mainG.append("g").attr("class", "data-layer").attr("clip-path", "url(#clip-cf)"); // Shared layer for bars/lines
-            mainG.append("line").attr("class", "zero-line").attr("stroke", "gray").attr("stroke-width", 1).style("opacity", 0.5);
-            mainG.append("g").attr("class", "axis-x");
-            mainG.append("g").attr("class", "axis-y");
-            mainG.append("g").attr("class", "scrollbars");
+            mainG.append("g").attr("class", "data-layer").attr("clip-path", "url(#clip-cf)").style("pointer-events", "none"); // Shared layer for bars/lines
+            mainG.append("g").attr("class", "price-line").attr("clip-path", "url(#clip-cash)").style("pointer-events", "none");
+
+
+            // Axes
+            const xAxisG = mainG.append("g").attr("class", "axis-x");
+            const yAxisG = mainG.append("g").attr("class", "axis-y");
+            mainG.append("g").attr("class", "scroll-layer");
         }
 
         const svg = svgRef.current!;
         svg.attr("width", width).attr("height", h).attr("viewBox", `0 0 ${width} ${h}`);
         svg.select("#clip-cf rect").attr("width", innerWidth).attr("height", innerHeight);
+        svg.select("#clip-cash rect").attr("width", innerWidth).attr("height", innerHeight); // Added for price-line clip
 
         const mainG = svg.select(".main-g").attr("transform", `translate(${margin.left},${margin.top})`);
 
@@ -112,12 +112,49 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
             d.capitalExpenditures || 0,
             d.freeCashFlow || 0
         ]);
-        const fullYDomain: [number, number] = [d3.min(allVals)! * 1.2, d3.max(allVals)! * 1.2];
-        const currentYDomain = yDomain || fullYDomain;
+        // Global Y Extent (for scrollbar)
+        const globalYExtent: [number, number] = [d3.min(allVals)! * 1.2, d3.max(allVals)! * 1.2];
+
+        // Calculate Y domain based on visible data in the X range
+        const calculateYDomain = (): [number, number] => {
+            if (yDomain) return yDomain;
+
+            const visibleData = data.filter(d => {
+                const date = new Date(d.reportedDate);
+                return date >= currentXDomain[0] && date <= currentXDomain[1];
+            });
+
+            if (visibleData.length === 0) return globalYExtent;
+
+            const visVals = visibleData.flatMap(d => [
+                d.operatingCashflow || 0,
+                d.capitalExpenditures || 0,
+                d.freeCashFlow || 0
+            ]);
+
+            if (visVals.length === 0) return globalYExtent;
+
+            const maxVal = Math.max(...visVals);
+            const minVal = Math.min(...visVals);
+
+            // Add padding
+            const yMax = maxVal > 0 ? maxVal * 1.1 : maxVal * 0.9;
+            const yMin = minVal < 0 ? minVal * 1.1 : minVal * 0.9;
+
+            return [yMin, yMax];
+        };
+        const currentYDomain: [number, number] = calculateYDomain();
+
+        // Update Refs
+        xDomainRef.current = currentXDomain;
+        yDomainRef.current = currentYDomain;
         const y = d3.scaleLinear().domain(currentYDomain).range([innerHeight, 0]);
 
         // Draw Axes
         const xAxis = d3.axisBottom(x).ticks(6).tickSize(0).tickPadding(10);
+        // Changed to Axis Left
+        const yAxis = d3.axisLeft(y).ticks(6).tickSize(0).tickPadding(10).tickFormat(d => formatCurrency(d as number));
+
         mainG.select<SVGGElement>(".axis-x")
             .attr("transform", `translate(0,${innerHeight})`)
             .call(xAxis)
@@ -125,8 +162,8 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
             .select(".domain").remove();
 
         mainG.select<SVGGElement>(".axis-y")
-            .attr("transform", `translate(${innerWidth}, 0)`)
-            .call(d3.axisRight(y).ticks(5).tickSize(0).tickPadding(10).tickFormat(d => formatCurrency(d as number)))
+            .attr("transform", `translate(0, 0)`)
+            .call(yAxis)
             .attr("class", "axis-y text-xs font-mono text-gray-500")
             .select(".domain").remove();
 
@@ -136,10 +173,6 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
             .selectAll("line").attr("stroke", "currentColor");
         mainG.select(".grid-lines").select(".domain").remove();
 
-        // Zero Line
-        mainG.select(".zero-line")
-            .attr("x1", 0).attr("x2", innerWidth)
-            .attr("y1", y(0)).attr("y2", y(0));
 
 
         // Data Painting
@@ -156,7 +189,6 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
             .attr("class", "bar-ocf")
             .attr("x", d => x(new Date(d.reportedDate)) - barWidth * 1.5) // Offset left
             .attr("y", d => y(Math.max(0, d.operatingCashflow || 0)))
-            .attr("width", barWidth)
             .attr("width", barWidth)
             .attr("height", d => Math.abs(y(d.operatingCashflow || 0) - y(0)))
             .attr("fill", "url(#gradientOCF)") // Gradient
@@ -243,12 +275,13 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
         }
 
 
-        // --- Scrollbar Logic ---
-        const scrollG = mainG.select<SVGGElement>(".scrollbars");
+        // Zoom Capture & Tooltip
+        const scrollG = mainG.select<SVGGElement>(".scroll-layer");
+
         const renderScrollbar = (
             parent: d3.Selection<SVGGElement, unknown, null, undefined>,
             classSelector: string,
-            xPos: number, yPos: number,
+            x: number, y: number,
             length: number, thickness: number,
             orientation: 'horizontal' | 'vertical',
             fullDomain: [number, number],
@@ -256,6 +289,8 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
             onChange: (d: [number, number]) => void
         ) => {
             const isH = orientation === 'horizontal';
+
+            // 1. Enter
             let g = parent.select<SVGGElement>(`.${classSelector}`);
             if (g.empty()) {
                 g = parent.append("g").attr("class", classSelector);
@@ -267,102 +302,134 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
                 thumbG.append("rect").attr("class", "handle-end").attr("fill", "transparent");
             }
 
+            // 2. Logic
             const barScale = d3.scaleLinear().domain(fullDomain).range([0, length]);
             let startPos = barScale(currentDomain[0]);
             let endPos = barScale(currentDomain[1]);
-            // Ensure order
-            if (startPos > endPos) [startPos, endPos] = [endPos, startPos];
-
             startPos = Math.max(0, Math.min(length, startPos));
             endPos = Math.max(0, Math.min(length, endPos));
             let thumbSize = Math.max(20, endPos - startPos);
+            if (endPos - startPos < 20) {
+                const center = (startPos + endPos) / 2;
+                startPos = center - 10;
+                if (startPos < 0) startPos = 0;
+                if (startPos + 20 > length) startPos = length - 20;
+            }
 
-            g.attr("transform", `translate(${xPos},${yPos})`);
-            g.select(".track").attr("width", isH ? length : thickness).attr("height", isH ? thickness : length).attr("rx", thickness / 2);
-            const thumbG = g.select(".thumb-group").attr("transform", isH ? `translate(${startPos}, 0)` : `translate(0, ${startPos})`);
-            const thumb = thumbG.select(".thumb").attr("width", isH ? thumbSize : thickness).attr("height", isH ? thickness : thumbSize).attr("rx", thickness / 2);
+            // 3. Update Attributes
+            g.attr("transform", `translate(${x},${y})`);
 
-            // Grips
+            g.select(".track")
+                .attr("width", isH ? length : thickness)
+                .attr("height", isH ? thickness : length)
+                .attr("rx", thickness / 2);
+
+            const thumbG = g.select(".thumb-group")
+                .attr("transform", isH
+                    ? `translate(${startPos}, 0)`
+                    : `translate(0, ${startPos})`
+                );
+
+            const thumb = thumbG.select(".thumb")
+                .attr("width", isH ? thumbSize : thickness)
+                .attr("height", isH ? thickness : thumbSize)
+                .attr("rx", thickness / 2);
+
             const gripG = thumbG.select(".grips").html("");
             if (thumbSize > 30) {
-                // simple grip lines
                 const gripPath = isH
-                    ? `M 6,3 L 6,${thickness - 3} M 9,3 L 9,${thickness - 3}`
-                    : `M 3,6 L ${thickness - 3},6 M 3,9 L ${thickness - 3},9`;
+                    ? `M 6,3 L 6,${thickness - 3} M 9,3 L 9,${thickness - 3} M ${thumbSize - 9},3 L ${thumbSize - 9},${thickness - 3} M ${thumbSize - 6},3 L ${thumbSize - 6},${thickness - 3}`
+                    : `M 3,6 L ${thickness - 3},6 M 3,9 L ${thickness - 3},9 M 3,${thumbSize - 9} L ${thickness - 3},${thumbSize - 9} M 3,${thumbSize - 6} L ${thickness - 3},${thumbSize - 6}`;
                 gripG.append("path").attr("d", gripPath).attr("stroke", "white").attr("stroke-width", 1.5).attr("opacity", 0.8);
             }
 
+            // 4. Update Interaction
             thumb.call((d3.drag<SVGRectElement, unknown>()
                 .container(g.node() as any)
-                .on("start", function (e) {
+                .on("start", function (event) {
+                    const p = isH ? event.x : event.y;
                     // @ts-ignore
-                    this.__dragOffset = (isH ? e.x : e.y) - startPos;
+                    this.__dragOffset = p - startPos;
                     d3.select(this).style("cursor", "grabbing");
                 })
-                .on("drag", function (e) {
+                .on("drag", function (event) {
+                    const p = isH ? event.x : event.y;
                     // @ts-ignore
-                    const off = this.__dragOffset || 0;
-                    let ns = (isH ? e.x : e.y) - off;
-                    ns = Math.max(0, Math.min(length - thumbSize, ns));
-                    const v1 = barScale.invert(ns);
-                    const v2 = barScale.invert(ns + thumbSize);
-                    onChange([v1, v2]);
+                    const offset = this.__dragOffset || 0;
+                    let newStart = p - offset;
+
+                    // Pixel Clamping
+                    newStart = Math.max(0, Math.min(length - thumbSize, newStart));
+
+                    // Invert
+                    let newValStart = barScale.invert(newStart);
+                    let newValEnd = barScale.invert(newStart + thumbSize);
+
+                    onChange([newValStart, newValEnd]);
                 })
                 .on("end", function () { d3.select(this).style("cursor", "grab"); })
             ) as any);
 
-
-            // Resize Handles
             const handleThickness = 12;
             const updateHandle = (type: 'start' | 'end') => {
                 const sel = thumbG.select(type === 'start' ? ".handle-start" : ".handle-end");
-                const xLoc = isH ? (type === 'start' ? 0 : thumbSize - handleThickness) : 0;
-                const yLoc = isH ? 0 : (type === 'start' ? 0 : thumbSize - handleThickness);
+                const xLoc = isH
+                    ? (type === 'start' ? 0 : thumbSize - handleThickness)
+                    : 0;
+                const yLoc = isH
+                    ? 0
+                    : (type === 'start' ? 0 : thumbSize - handleThickness);
                 const w = isH ? handleThickness : thickness;
                 const h = isH ? thickness : handleThickness;
 
                 sel.attr("x", xLoc).attr("y", yLoc).attr("width", w).attr("height", h)
                     .style("cursor", isH ? "ew-resize" : "ns-resize")
-                    .attr("pointer-events", "all") // Ensure it catches events
                     .call((d3.drag<SVGRectElement, unknown>()
                         .container(g.node() as any)
                         .on("start", function (event) {
                             const p = isH ? event.x : event.y;
+                            const edgePos = type === 'start' ? startPos : endPos;
                             // @ts-ignore
-                            this.__dragOffset = p - (type === 'start' ? startPos : endPos);
+                            this.__dragOffset = p - edgePos;
                         })
                         .on("drag", function (event) {
                             const p = isH ? event.x : event.y;
                             // @ts-ignore
-                            let nep = p - (this.__dragOffset || 0);
+                            const offset = this.__dragOffset || 0;
+                            let newEdgePos = p - offset;
+
+                            const minPxGap = 20;
 
                             if (type === 'start') {
-                                onChange([barScale.invert(Math.max(0, Math.min(endPos - 20, nep))), currentDomain[1]]);
+                                newEdgePos = Math.max(0, Math.min(endPos - minPxGap, newEdgePos));
+                                const val = barScale.invert(newEdgePos);
+                                onChange([val, currentDomain[1]]);
                             } else {
-                                onChange([currentDomain[0], barScale.invert(Math.max(startPos + 20, Math.min(length, nep)))]);
+                                newEdgePos = Math.max(startPos + minPxGap, Math.min(length, newEdgePos));
+                                const val = barScale.invert(newEdgePos);
+                                onChange([currentDomain[0], val]);
                             }
                         })
                     ) as any);
             };
-
             updateHandle('start');
             updateHandle('end');
         };
 
-        const twoYearsFuture = new Date().setFullYear(new Date().getFullYear() + 2);
-        const fullX: [number, number] = [xExt[0]?.getTime() || Date.now(), Math.max(xExt[1]?.getTime() || Date.now(), twoYearsFuture)];
+        // xExt is already calculated at line 112
+        const maxDate = new Date(xExt[1]);
+        maxDate.setMonth(maxDate.getMonth() + 1);
+        const fullX: [number, number] = [xExt[0].getTime(), maxDate.getTime()];
+        const fullY: [number, number] = [globalYExtent[0], globalYExtent[1]];
 
-        renderScrollbar(scrollG, "scrollbar-x", 0, innerHeight + 35, innerWidth, 16, 'horizontal',
-            fullX,
-            [currentXDomain[0].getTime(), currentXDomain[1].getTime()],
-            (d) => onXDomainChange?.([new Date(d[0]), new Date(d[1])])
-        );
+        renderScrollbar(scrollG, "scrollbar-x", 0, innerHeight + 35, innerWidth, 16, 'horizontal', fullX, [currentXDomain[0].getTime(), currentXDomain[1].getTime()],
+            (d) => onXDomainChange && onXDomainChange([new Date(d[0]), new Date(d[1])]));
 
-        renderScrollbar(scrollG, "scrollbar-y", innerWidth + 64, 0, innerHeight, 16, 'vertical',
-            [fullYDomain[1], fullYDomain[0]],
-            [currentYDomain[1], currentYDomain[0]],
-            (d) => setYDomain([d[1], d[0]])
-        );
+        renderScrollbar(scrollG, "scrollbar-y", -margin.left - 20, 0, innerHeight, 16, 'vertical', [fullY[1], fullY[0]], [currentYDomain[1], currentYDomain[0]],
+            (d) => setYDomain([d[1], d[0]]));
+
+
+
 
 
         // Interaction

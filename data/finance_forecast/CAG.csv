@@ -1,0 +1,2 @@
+ticker,company_name,reportedDate,fiscalDateEnding,estimatedEPS,currency,timeOfTheDay,horizon_used,pulled_on
+CAG,CONAGRA BRANDS INC,2026-04-02,2026-02-28,0.56,USD,nan,12month,2026-01-07

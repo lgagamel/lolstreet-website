@@ -3,6 +3,7 @@ import { getCurrentClose, getStockSeries, getFinanceData, getFinanceForecast, ge
 import StockDashboard from "../../../components/stock/StockDashboard";
 import YoutubeEmbed from "../../../components/stock/YoutubeEmbed";
 import InfoTooltip from "../../../components/InfoTooltip";
+import BackToStockList from "../../../components/BackToStockList";
 
 type PageProps = {
     params: Promise<{ ticker?: string }>;
@@ -29,20 +30,17 @@ export default async function Page(props: PageProps) {
 
     const rawTicker = params?.ticker ?? "";
     const ticker = typeof rawTicker === "string" ? rawTicker.toUpperCase() : "";
+    console.log("Rendering stock page for", ticker);
 
     if (!ticker) {
         return (
-            <main className="p-6">
-                <div className="mb-4">
-                    <Link className="underline text-sm" href="/">
-                        ← Back
-                    </Link>
-                </div>
+            <div className="p-6">
+                <BackToStockList />
                 <div className="text-red-600">Missing ticker in route params.</div>
                 <div className="text-xs text-gray-500 mt-2">
                     Open like: <code>/stock/NVDA</code>
                 </div>
-            </main>
+            </div>
         );
     }
 
@@ -69,13 +67,10 @@ export default async function Page(props: PageProps) {
     const spanYears = spanDays ? spanDays / 365.0 : 0;
 
     return (
-        <main className="p-6 max-w-5xl mx-auto">
+        <div className="p-6 max-w-5xl mx-auto" suppressHydrationWarning>
             <div className="mb-6">
-                <Link className="text-sm text-gray-500 hover:text-gray-800 transition-colors" href="/">
-                    ← Back to list
-                </Link>
+                <BackToStockList />
             </div>
-
 
             <div className="mb-8 border-b border-gray-200 dark:border-gray-800 pb-6">
                 <h1 className="text-4xl font-black tracking-tight mb-2">{ticker}</h1>
@@ -123,24 +118,24 @@ export default async function Page(props: PageProps) {
                                     {currentPE && Number.isFinite(currentPE) && (
                                         <>
                                             <div className="flex items-center gap-2 bg-violet-50 dark:bg-violet-900/20 px-3 py-1.5 rounded-lg border border-violet-100 dark:border-violet-900/30">
-                                                <span className="font-semibold text-violet-700 dark:text-violet-300 flex items-center">
+                                                <div className="font-semibold text-violet-700 dark:text-violet-300 flex items-center">
                                                     Current PE
                                                     <InfoTooltip>
                                                         🏷️ <strong>How many years of profit you're paying for TODAY.</strong> Like buying a lemonade stand: if it earns $5/year and costs $50, the PE is 10 (you'd wait 10 years to break even).
                                                     </InfoTooltip>
-                                                </span>
+                                                </div>
                                                 <span className="font-mono font-medium text-violet-900 dark:text-violet-100">
                                                     {currentPE.toFixed(2)}
                                                 </span>
                                             </div>
 
                                             <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-100 dark:border-gray-700">
-                                                <span className="font-semibold text-gray-500 dark:text-gray-400 flex items-center">
+                                                <div className="font-semibold text-gray-500 dark:text-gray-400 flex items-center">
                                                     PE Gap
                                                     <InfoTooltip>
                                                         💰 <strong>Is this stock ON SALE or OVERPRICED?</strong> Negative (green) = Cheaper than usual! Positive (red) = More expensive than usual!
                                                     </InfoTooltip>
-                                                </span>
+                                                </div>
                                                 {(() => {
                                                     const gap = (currentPE - mid) / mid;
                                                     const isPremium = gap > 0;
@@ -155,24 +150,24 @@ export default async function Page(props: PageProps) {
                                         </>
                                     )}
                                     <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-100 dark:border-gray-700">
-                                        <span className="font-semibold text-gray-500 dark:text-gray-400 flex items-center">
+                                        <div className="font-semibold text-gray-500 dark:text-gray-400 flex items-center">
                                             1-Year PE Median
                                             <InfoTooltip>
                                                 🏷️ <strong>The 'typical price tag'</strong> investors paid for this stock over the last year. Think of it as the average sticker price!
                                             </InfoTooltip>
-                                        </span>
+                                        </div>
                                         <span className="font-mono font-medium text-gray-900 dark:text-gray-200">
                                             {mid.toFixed(2)}
                                         </span>
                                     </div>
 
                                     <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5 rounded-lg border border-blue-100 dark:border-blue-900/30">
-                                        <span className="font-semibold text-blue-700 dark:text-blue-300 flex items-center">
+                                        <div className="font-semibold text-blue-700 dark:text-blue-300 flex items-center">
                                             Typical PE Range
                                             <InfoTooltip>
                                                 📊 <strong>Where the PE usually lives!</strong> This shows the normal range (90% of the time) for this stock's PE over the past year.
                                             </InfoTooltip>
-                                        </span>
+                                        </div>
                                         <span className="font-mono font-medium text-blue-900 dark:text-blue-100">
                                             {p05.toFixed(2)} - {p95.toFixed(2)}
                                         </span>
@@ -219,13 +214,13 @@ export default async function Page(props: PageProps) {
 
                         return (
                             <div className="flex items-center gap-2 text-xs">
-                                <span className="text-gray-500 dark:text-gray-400 font-medium flex items-center">
+                                <div className="text-gray-500 dark:text-gray-400 font-medium flex items-center">
                                     EPS Growth (Past Year)
                                     <InfoTooltip>
                                         🍰 <strong>Is the profit pie getting BIGGER?</strong> This shows how much more (or less) the company is earning per share compared to last year!
                                     </InfoTooltip>
                                     :
-                                </span>
+                                </div>
                                 <span className={`font-mono font-bold ${isPos ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
                                     {isPos ? '+' : ''}{(avgGrowth * 100).toFixed(1)}%
                                 </span>
@@ -251,6 +246,6 @@ export default async function Page(props: PageProps) {
             <div className="mt-12 pt-6 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-400 text-center">
                 Loaded {series.length} data points
             </div>
-        </main >
+        </div >
     );
 }

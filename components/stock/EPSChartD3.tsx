@@ -23,24 +23,18 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
         data?: { date: string; value: number; type: 'reported' | 'forecast'; est?: number };
     }>({ visible: false, x: 0, y: 0 });
 
+    // Refs for Drag Handlers
+    const xDomainRef = useRef<[Date, Date] | null>(null);
+    const yDomainRef = useRef<[number, number] | null>(null);
+    const dragContextX = useRef<{ startX: number, domain: [Date, Date] } | null>(null);
+    const dragContextY = useRef<{ startY: number, domain: [number, number] } | null>(null);
+
     // Y-Axis State
     const [yDomain, setYDomain] = useState<[number, number] | null>(null);
 
     // Initial Y Domain Calculation (incorporating forecast)
-    useEffect(() => {
-        if (!data.length && !forecast.length) return;
-
-        const histMax = d3.max(data, d => Math.max(d.reportedEPS || 0, d.estimatedEPS || 0)) || 0;
-        const histMin = d3.min(data, d => Math.min(d.reportedEPS || 0, d.estimatedEPS || 0)) || 0;
-
-        const foreMax = d3.max(forecast, d => d.eps_forecast || 0) || 0;
-        const foreMin = d3.min(forecast, d => d.eps_forecast || 0) || 0;
-
-        const yMax = Math.max(histMax, foreMax) || 1;
-        const yMin = Math.min(histMin, foreMin) || 0;
-
-        setYDomain([Math.min(0, yMin), yMax * 1.1]);
-    }, [data, forecast]);
+    // Initial Y Domain Calculation removed to allow dynamic scaling
+    // useEffect(() => { ... }, [data, forecast]);
 
     useEffect(() => {
         if (!containerRef.current || (!data.length && !forecast.length)) return;
@@ -49,7 +43,8 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
         const width = container.clientWidth;
         const h = height;
         // Margins matching PriceChartD3
-        const margin = { top: 20, right: 80, left: 10, bottom: 50 };
+        // Margins: Left Y-axis, No Scrollbars
+        const margin = { top: 20, right: 30, left: 60, bottom: 50 };
         const innerWidth = width - margin.left - margin.right;
         const innerHeight = h - margin.top - margin.bottom;
 
@@ -89,11 +84,15 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
             const mainG = svg.append("g").attr("class", "main-g");
             mainG.append("rect").attr("class", "zoom-capture").attr("fill", "transparent");
             mainG.append("g").attr("class", "grid-lines opacity-10");
-            mainG.append("g").attr("class", "bars-layer").attr("clip-path", "url(#clip-eps)");
-            mainG.append("g").attr("class", "forecast-layer").attr("clip-path", "url(#clip-eps)");
-            mainG.append("g").attr("class", "axis-x");
-            mainG.append("g").attr("class", "axis-y");
-            mainG.append("g").attr("class", "scrollbars");
+            mainG.append("g").attr("class", "bars-layer").attr("clip-path", "url(#clip-eps)").style("pointer-events", "none");
+            mainG.append("g").attr("class", "forecast-layer").attr("clip-path", "url(#clip-eps)").style("pointer-events", "none");
+            mainG.append("g").attr("class", "price-line").attr("clip-path", "url(#clip-eps)").style("pointer-events", "none");
+
+            // Axes
+            const xAxisG = mainG.append("g").attr("class", "axis-x");
+            const yAxisG = mainG.append("g").attr("class", "axis-y");
+            mainG.append("g").attr("class", "scroll-layer"); // Layer for scrollbars
+
         }
 
         const svg = svgRef.current!;
@@ -114,22 +113,50 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
             currentXDomain = [start, end];
         }
 
-        const x = d3.scaleTime().domain(currentXDomain).range([0, innerWidth]);
+        const xScale = d3.scaleTime().domain(currentXDomain).range([0, innerWidth]);
 
-        // Y Axis: EPS (Linear)
-        const histMax = d3.max(data, d => Math.max(d.reportedEPS || 0, d.estimatedEPS || 0)) || 0;
-        const histMin = d3.min(data, d => Math.min(d.reportedEPS || 0, d.estimatedEPS || 0)) || 0;
-        const foreMax = d3.max(forecast, d => d.eps_forecast || 0) || 0;
-        const foreMin = d3.min(forecast, d => d.eps_forecast || 0) || 0;
-        const dataYMax = Math.max(histMax, foreMax) || 1;
-        const dataYMin = Math.min(histMin, foreMin) || 0;
+        // Calculate Y domain based on visible data in the X range
+        const calculateYDomain = (): [number, number] => {
+            if (yDomain) return yDomain;
 
-        const fullYDomain: [number, number] = [Math.min(0, dataYMin), dataYMax * 1.5]; // 1.5x for headroom
-        const currentYDomain = yDomain || [Math.min(0, dataYMin), dataYMax * 1.1];
-        const y = d3.scaleLinear().domain(currentYDomain).range([innerHeight, 0]);
+            const visibleData = data.filter(d => {
+                const date = new Date(d.reportedDate);
+                return date >= currentXDomain[0] && date <= currentXDomain[1];
+            });
+
+            const visibleForecast = forecast.filter(d => {
+                const date = new Date(d.reportedDate);
+                return date >= currentXDomain[0] && date <= currentXDomain[1];
+            });
+
+            if (visibleData.length === 0 && visibleForecast.length === 0) return [0, 1];
+
+            const histEPS = visibleData.flatMap(d => [d.reportedEPS || 0, d.estimatedEPS || 0]);
+            const foreEPS = visibleForecast.map(d => d.eps_forecast || 0);
+            const allValues = [...histEPS, ...foreEPS];
+
+            if (allValues.length === 0) return [0, 1];
+
+            const maxVal = Math.max(...allValues);
+            const minVal = Math.min(...allValues);
+
+            const yMax = maxVal > 0 ? maxVal * 1.1 : maxVal * 0.9;
+            const yMin = minVal < 0 ? minVal * 1.1 : 0;
+
+            return [Math.min(0, yMin), Math.max(0.1, yMax)];
+        };
+        const currentYDomain: [number, number] = calculateYDomain();
+
+        // Update Refs
+        xDomainRef.current = currentXDomain;
+        yDomainRef.current = currentYDomain;
+        const yScale = d3.scaleLinear().domain(currentYDomain).range([innerHeight, 0]);
 
         // Axes
-        const xAxis = d3.axisBottom(x).ticks(6).tickSize(0).tickPadding(10);
+        const xAxis = d3.axisBottom(xScale).ticks(6).tickSize(0).tickPadding(10);
+        // Changed to Axis Left
+        const yAxis = d3.axisLeft(yScale).ticks(6).tickSize(0).tickPadding(10);
+
         mainG.select<SVGGElement>(".axis-x")
             .attr("transform", `translate(0,${innerHeight})`)
             .call(xAxis)
@@ -137,13 +164,13 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
             .select(".domain").remove();
 
         mainG.select<SVGGElement>(".axis-y")
-            .attr("transform", `translate(${innerWidth}, 0)`)
-            .call(d3.axisRight(y).ticks(5).tickSize(0).tickPadding(10))
+            .attr("transform", `translate(0, 0)`)
+            .call(yAxis)
             .attr("class", "axis-y text-xs font-mono text-gray-500")
             .select(".domain").remove();
 
         mainG.select<SVGGElement>(".grid-lines")
-            .call(d3.axisLeft(y).tickSize(-innerWidth).ticks(5).tickFormat(() => ""))
+            .call(d3.axisLeft(yScale).tickSize(-innerWidth).ticks(5).tickFormat(() => ""))
             .style("stroke-dasharray", "4 4")
             .selectAll("line").attr("stroke", "currentColor");
         mainG.select(".grid-lines").select(".domain").remove();
@@ -160,10 +187,10 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
             .enter()
             .append("rect")
             .attr("class", "bar-reported")
-            .attr("x", (d) => x(new Date(d.reportedDate)) - barWidth / 2)
-            .attr("y", (d) => y(Math.max(0, d.reportedEPS || 0)))
+            .attr("x", (d) => xScale(new Date(d.reportedDate)) - barWidth / 2)
+            .attr("y", (d) => yScale(Math.max(0, d.reportedEPS || 0)))
             .attr("width", barWidth)
-            .attr("height", (d) => Math.abs(y(d.reportedEPS || 0) - y(0)))
+            .attr("height", (d) => Math.abs(yScale(d.reportedEPS || 0) - yScale(0)))
             .attr("fill", (d) => (d.reportedEPS && d.reportedEPS >= 0 ? "url(#gradientEPSPos)" : "url(#gradientEPSNeg)"))
             .attr("rx", 3);
 
@@ -171,8 +198,8 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
             .data(data)
             .enter()
             .append("circle")
-            .attr("cx", (d) => x(new Date(d.reportedDate)))
-            .attr("cy", (d) => y(d.estimatedEPS || 0))
+            .attr("cx", (d) => xScale(new Date(d.reportedDate)))
+            .attr("cy", (d) => yScale(d.estimatedEPS || 0))
             .attr("r", 3)
             .attr("fill", "#6366f1")
             .attr("stroke", "white")
@@ -187,10 +214,10 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
             .enter()
             .append("rect")
             .attr("class", "bar-forecast")
-            .attr("x", (d) => x(new Date(d.reportedDate)) - barWidth / 2)
-            .attr("y", (d) => y(Math.max(0, d.eps_forecast || 0)))
+            .attr("x", (d) => xScale(new Date(d.reportedDate)) - barWidth / 2)
+            .attr("y", (d) => yScale(Math.max(0, d.eps_forecast || 0)))
             .attr("width", barWidth)
-            .attr("height", (d) => Math.abs(y(d.eps_forecast || 0) - y(0)))
+            .attr("height", (d) => Math.abs(yScale(d.eps_forecast || 0) - yScale(0)))
             .attr("fill", "transparent") // Hollow
             .attr("stroke", "#6366f1") // Indigo outline
             .attr("stroke-width", 1.5)
@@ -246,13 +273,49 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
             });
         }
 
-        // --- Scrollbar Logic ---
-        const scrollG = mainG.select<SVGGElement>(".scrollbars");
+        // --- Axis Interaction Rects dimensions ---
+        mainG.select(".axis-x .axis-drag-rect")
+            .attr("x", 0).attr("y", 0)
+            .attr("width", innerWidth).attr("height", margin.bottom);
+
+        // Visual indicator line for X
+        const axG = mainG.select(".axis-x");
+        if (axG.select(".axis-drag-line").empty()) {
+            axG.append("line").attr("class", "axis-drag-line").attr("stroke", "#6366f1").attr("stroke-width", 2).attr("opacity", 0).style("pointer-events", "none");
+        }
+        axG.select(".axis-drag-line")
+            .attr("x1", 0).attr("x2", innerWidth)
+            .attr("y1", 0).attr("y2", 0);
+
+        mainG.select(".axis-y .axis-drag-rect")
+            .attr("x", -margin.left).attr("y", 0) // Align to cover labels
+            .attr("width", margin.left).attr("height", innerHeight);
+
+        // Visual indicator line for Y
+        const ayG = mainG.select(".axis-y");
+        if (ayG.select(".axis-drag-line").empty()) {
+            ayG.append("line").attr("class", "axis-drag-line").attr("stroke", "#6366f1").attr("stroke-width", 2).attr("opacity", 0).style("pointer-events", "none");
+        }
+        ayG.select(".axis-drag-line")
+            .attr("x1", 0).attr("x2", 0)
+            .attr("y1", 0).attr("y2", innerHeight);
+
+        // --- Embedded Axis Dragging (Panning) ---
+
+        const setDragState = (axisClass: string, active: boolean) => {
+            mainG.select(`.${axisClass} .axis-drag-line`).transition().duration(200).attr("opacity", active ? 1 : 0);
+        };
+
+
+
+
+        // Zoom Capture & Tooltip
+        const scrollG = mainG.select<SVGGElement>(".scroll-layer");
 
         const renderScrollbar = (
             parent: d3.Selection<SVGGElement, unknown, null, undefined>,
             classSelector: string,
-            xPos: number, yPos: number,
+            x: number, y: number,
             length: number, thickness: number,
             orientation: 'horizontal' | 'vertical',
             fullDomain: [number, number],
@@ -277,13 +340,6 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
             const barScale = d3.scaleLinear().domain(fullDomain).range([0, length]);
             let startPos = barScale(currentDomain[0]);
             let endPos = barScale(currentDomain[1]);
-
-            if (startPos > endPos) {
-                const temp = startPos;
-                startPos = endPos;
-                endPos = temp;
-            }
-
             startPos = Math.max(0, Math.min(length, startPos));
             endPos = Math.max(0, Math.min(length, endPos));
             let thumbSize = Math.max(20, endPos - startPos);
@@ -295,7 +351,7 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
             }
 
             // 3. Update Attributes
-            g.attr("transform", `translate(${xPos},${yPos})`);
+            g.attr("transform", `translate(${x},${y})`);
 
             g.select(".track")
                 .attr("width", isH ? length : thickness)
@@ -394,25 +450,39 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
             updateHandle('end');
         };
 
-        // 2 Years from now logic + combined data
-        const xExtFullLocal = d3.extent(allDates) as [Date, Date];
-        const twoYearsFromNow = new Date().setFullYear(new Date().getFullYear() + 2);
-        const fullX: [number, number] = [
-            (xExtFullLocal[0] ? xExtFullLocal[0].getTime() : Date.now()),
-            Math.max((xExtFullLocal[1] ? xExtFullLocal[1].getTime() : Date.now()), twoYearsFromNow)
-        ];
+        const maxDate = xExt[1] ? new Date(xExt[1]) : new Date();
+        maxDate.setMonth(maxDate.getMonth() + 1);
+        const fullX: [number, number] = [xExt[0]?.getTime() || 0, maxDate.getTime()];
+
+        // Calculate global Y extent for scrollbar
+        let dataYMin = 0;
+        let dataYMax = 0;
+        if (data.length > 0 || forecast.length > 0) {
+            const allValues: number[] = [];
+            data.forEach(d => {
+                if (d.reportedEPS !== null) allValues.push(d.reportedEPS);
+                if (d.estimatedEPS !== null) allValues.push(d.estimatedEPS);
+            });
+            forecast.forEach(d => {
+                if (d.eps_forecast !== null) allValues.push(d.eps_forecast);
+            });
+            if (allValues.length > 0) {
+                dataYMin = Math.min(...allValues);
+                dataYMax = Math.max(...allValues);
+            }
+        }
+        console.log("EPSChart calculated Y extent:", { dataYMin, dataYMax });
+
+        // EPS Y Max assumption: 0 to max + padding. EPS can be negative, so min/max extent?
+        // Let's use current yDomain logic fallback or existing assumption. 
+        // EPSChartD3 has `yDomain` prop or local calc.
+        const fullY: [number, number] = [yDomain ? yDomain[0] : Math.min(0, dataYMin), yDomain ? yDomain[1] * 1.5 : dataYMax * 1.5];
 
         renderScrollbar(scrollG, "scrollbar-x", 0, innerHeight + 35, innerWidth, 16, 'horizontal', fullX, [currentXDomain[0].getTime(), currentXDomain[1].getTime()],
             (d) => onXDomainChange && onXDomainChange([new Date(d[0]), new Date(d[1])]));
 
-        // Vertical Scrollbar (Y)
-        renderScrollbar(scrollG, "scrollbar-y", innerWidth + 64, 0, innerHeight, 16, 'vertical',
-            [fullYDomain[1], fullYDomain[0]],
-            [currentYDomain[1], currentYDomain[0]],
-            (d) => setYDomain([d[1], d[0]])
-        );
-
-        // Zoom Capture & Tooltip
+        renderScrollbar(scrollG, "scrollbar-y", -margin.left - 20, 0, innerHeight, 16, 'vertical', [fullY[1], fullY[0]], [currentYDomain[1], currentYDomain[0]],
+            (d) => setYDomain([d[1], d[0]]));
         const zoomRect = mainG.select<SVGRectElement>(".zoom-capture")
             .attr("width", innerWidth).attr("height", innerHeight)
             .style("cursor", "crosshair")
@@ -424,7 +494,7 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
 
         zoomRect.on("mousemove", (event) => {
             const [mx] = d3.pointer(event);
-            const date = x.invert(mx);
+            const date = xScale.invert(mx);
 
             // Check nearest in both datasets
             const iHist = bisectHist(data, date);

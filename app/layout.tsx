@@ -15,6 +15,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      {/* Force Rebuild */}
       <body className="antialiased min-h-screen bg-gray-50 dark:bg-black">
         <Navbar />
         {children}

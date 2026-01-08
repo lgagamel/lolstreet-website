@@ -4,8 +4,26 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { StockReturnSummaryRow, SortMetric } from "../../types";
 
+export type FilterState = {
+    minMktCap: string; maxMktCap: string;
+    minPe: string; maxPe: string;
+    minGrowth: string; maxGrowth: string;
+    minFairVal: string; maxFairVal: string;
+};
+
+export const INITIAL_FILTERS: FilterState = {
+    minMktCap: "", maxMktCap: "",
+    minPe: "", maxPe: "",
+    minGrowth: "", maxGrowth: "",
+    minFairVal: "", maxFairVal: "",
+};
+
 type Props = {
     rows: StockReturnSummaryRow[];
+    query: string;
+    onQueryChange: (q: string) => void;
+    filters: FilterState;
+    onFilterChange: (filters: FilterState) => void;
 };
 
 type SortState = {
@@ -34,9 +52,15 @@ function fmtPrice(v: number) {
     return <span className="font-mono text-gray-700 dark:text-gray-300">${v.toFixed(2)}</span>;
 }
 
-export default function RankingsTable({ rows }: Props) {
-    const [query, setQuery] = useState("");
-    const [sort, setSort] = useState<SortState>({ metric: "ret_6m_pct", dir: "desc" });
+export default function RankingsTable({ rows, query, onQueryChange, filters, onFilterChange }: Props) {
+    const [sort, setSort] = useState<SortState>({ metric: "market_cap", dir: "desc" });
+    const [showFilters, setShowFilters] = useState(false);
+
+    const handleFilterChange = (key: keyof FilterState, val: string) => {
+        onFilterChange({ ...filters, [key]: val });
+    };
+
+    const resetFilters = () => onFilterChange(INITIAL_FILTERS);
 
     function fmtPct(val: number | null) {
         if (val === null || !Number.isFinite(val)) return "-";
@@ -55,14 +79,31 @@ export default function RankingsTable({ rows }: Props) {
         return <span className="font-medium text-gray-900 dark:text-white">${val.toFixed(2)}</span>;
     }
 
+
+    function fmtMarketCap(val: number | null) {
+        if (val === null || !Number.isFinite(val)) return "-";
+        if (val >= 1e12) return <span className="font-mono text-gray-700 dark:text-gray-300">{(val / 1e12).toFixed(2)}T</span>;
+        if (val >= 1e9) return <span className="font-mono text-gray-700 dark:text-gray-300">{(val / 1e9).toFixed(2)}B</span>;
+        if (val >= 1e6) return <span className="font-mono text-gray-700 dark:text-gray-300">{(val / 1e6).toFixed(2)}M</span>;
+        return <span className="font-mono text-gray-700 dark:text-gray-300">{val.toLocaleString()}</span>;
+    }
+
     const sortedAndFiltered = useMemo(() => {
-        // 1. Sort the full dataset first
+        // 1. Sort the pre-filtered dataset
         const allSorted = [...rows].sort((a, b) => {
             const av = a[sort.metric];
             const bv = b[sort.metric];
 
-            const aBad = av === null || !Number.isFinite(av);
-            const bBad = bv === null || !Number.isFinite(bv);
+            if (sort.metric === "ticker") {
+                const sA = (av as string).toUpperCase();
+                const sB = (bv as string).toUpperCase();
+                if (sA < sB) return sort.dir === "asc" ? -1 : 1;
+                if (sA > sB) return sort.dir === "asc" ? 1 : -1;
+                return 0;
+            }
+
+            const aBad = av === null || !Number.isFinite(av as number);
+            const bBad = bv === null || !Number.isFinite(bv as number);
 
             if (aBad && bBad) return 0;
             if (aBad) return 1;
@@ -75,12 +116,8 @@ export default function RankingsTable({ rows }: Props) {
         // 2. Attach Rank (1-based index)
         const withRank = allSorted.map((r, i) => ({ ...r, originalRank: i + 1 }));
 
-        // 3. Filter by query
-        const q = query.trim().toUpperCase();
-        if (!q) return withRank;
-
-        return withRank.filter((r) => r.ticker.toUpperCase().includes(q));
-    }, [rows, sort, query]);
+        return withRank;
+    }, [rows, sort]);
 
     const top10 = sortedAndFiltered.slice(0, 10);
 
@@ -107,12 +144,7 @@ export default function RankingsTable({ rows }: Props) {
                 </span>
             )}
 
-            {/* Question Mark Icon */}
-            {tooltip && (
-                <span className="text-gray-400 hover:text-indigo-500 transition-colors text-sm">
-                    ❓
-                </span>
-            )}
+
 
             {/* Tooltip */}
             {tooltip && (
@@ -142,20 +174,138 @@ export default function RankingsTable({ rows }: Props) {
                     </span>
                 </div>
 
-                <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="h-4 w-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                    <button
+                        onClick={() => setShowFilters(!showFilters)}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors flex items-center gap-2 ${showFilters
+                            ? "bg-indigo-50 border-indigo-200 text-indigo-600 dark:bg-indigo-900/20 dark:border-indigo-800 dark:text-indigo-400"
+                            : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700"
+                            }`}
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                         </svg>
+                        Filters
+                        {(Object.values(filters).some(v => v !== "")) && (
+                            <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                        )}
+                    </button>
+
+                    <div className="relative flex-1">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg className="h-4 w-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+                            </svg>
+                        </div>
+                        <input
+                            value={query}
+                            onChange={(e) => onQueryChange(e.target.value)}
+                            placeholder="Search ticker..."
+                            className="pl-9 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none w-full transition-all"
+                        />
                     </div>
-                    <input
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Search ticker..."
-                        className="pl-9 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none w-full sm:w-64 transition-all"
-                    />
                 </div>
             </div>
+
+            {/* Filter Panel */}
+            {showFilters && (
+                <div className="p-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/30 animate-in slide-in-from-top-2 duration-200">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {/* Market Cap */}
+                        <div className="space-y-1">
+                            <label className="text-xs font-semibold text-gray-500 uppercase">Market Cap ($B)</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="number"
+                                    placeholder="Min"
+                                    value={filters.minMktCap}
+                                    onChange={(e) => handleFilterChange("minMktCap", e.target.value)}
+                                    className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 focus:ring-1 focus:ring-indigo-500 outline-none"
+                                />
+                                <input
+                                    type="number"
+                                    placeholder="Max"
+                                    value={filters.maxMktCap}
+                                    onChange={(e) => handleFilterChange("maxMktCap", e.target.value)}
+                                    className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 focus:ring-1 focus:ring-indigo-500 outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        {/* EPS Growth */}
+                        <div className="space-y-1">
+                            <label className="text-xs font-semibold text-gray-500 uppercase">EPS Growth (%)</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="number"
+                                    placeholder="Min"
+                                    value={filters.minGrowth}
+                                    onChange={(e) => handleFilterChange("minGrowth", e.target.value)}
+                                    className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 focus:ring-1 focus:ring-indigo-500 outline-none"
+                                />
+                                <input
+                                    type="number"
+                                    placeholder="Max"
+                                    value={filters.maxGrowth}
+                                    onChange={(e) => handleFilterChange("maxGrowth", e.target.value)}
+                                    className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 focus:ring-1 focus:ring-indigo-500 outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        {/* PE Ratio */}
+                        <div className="space-y-1">
+                            <label className="text-xs font-semibold text-gray-500 uppercase">PE Ratio</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="number"
+                                    placeholder="Min"
+                                    value={filters.minPe}
+                                    onChange={(e) => handleFilterChange("minPe", e.target.value)}
+                                    className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 focus:ring-1 focus:ring-indigo-500 outline-none"
+                                />
+                                <input
+                                    type="number"
+                                    placeholder="Max"
+                                    value={filters.maxPe}
+                                    onChange={(e) => handleFilterChange("maxPe", e.target.value)}
+                                    className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 focus:ring-1 focus:ring-indigo-500 outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        {/* vs Fair Value */}
+                        <div className="space-y-1">
+                            <label className="text-xs font-semibold text-gray-500 uppercase">vs Fair Value (%)</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="number"
+                                    placeholder="Min"
+                                    value={filters.minFairVal}
+                                    onChange={(e) => handleFilterChange("minFairVal", e.target.value)}
+                                    className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 focus:ring-1 focus:ring-indigo-500 outline-none"
+                                />
+                                <input
+                                    type="number"
+                                    placeholder="Max"
+                                    value={filters.maxFairVal}
+                                    onChange={(e) => handleFilterChange("maxFairVal", e.target.value)}
+                                    className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 focus:ring-1 focus:ring-indigo-500 outline-none"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="mt-4 flex justify-end">
+                        <button
+                            onClick={resetFilters}
+                            className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded transition-colors"
+                        >
+                            Reset Filters
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Mobile Card View (Visible on small screens) */}
             <div className="block sm:hidden divide-y divide-gray-100 dark:divide-gray-800">
@@ -175,6 +325,10 @@ export default function RankingsTable({ rows }: Props) {
 
                         <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
                             <div className="flex justify-between">
+                                <span className="text-gray-500 text-xs">Market Cap</span>
+                                {fmtMarketCap(r.market_cap)}
+                            </div>
+                            <div className="flex justify-between">
                                 <span className="text-gray-500 text-xs">EPS Growth</span>
                                 {fmtPct(r.eps_yoy_growth_avg_last4q_pct)}
                             </div>
@@ -183,13 +337,10 @@ export default function RankingsTable({ rows }: Props) {
                                 <span className="font-mono text-gray-700 dark:text-gray-300">{r.current_pe ? `${r.current_pe.toFixed(1)}x` : '-'}</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-gray-500 text-xs">PE Gap</span>
+                                <span className="text-gray-500 text-xs">vs Fair Value</span>
                                 {fmtPeGap(r.current_pe_gap_pct)}
                             </div>
-                            <div className="flex justify-between">
-                                <span className="text-gray-500 text-xs text-right">1Y Return</span>
-                                {fmtPct(r.ret_1y_pct)}
-                            </div>
+
                         </div>
                     </div>
                 ))}
@@ -201,15 +352,14 @@ export default function RankingsTable({ rows }: Props) {
                     <thead>
                         <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
                             <th className="py-3 px-6 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-16">Rank</th>
-                            <th className="py-3 px-6 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Asset</th>
-                            <th className="py-3 px-6 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Close Price</th>
+                            <th className="py-3 px-6 text-left">{header("ticker", "Asset")}</th>
+                            <th className="py-3 px-6 text-left">{header("market_cap", "Market Cap", { text: "🏢 The total value of the company's shares. (Share Price × Total Shares)", preference: "high" })}</th>
+                            <th className="py-3 px-6 text-left">{header("current_close", "Close Price")}</th>
                             <th className="py-3 px-6 text-left">{header("eps_yoy_growth_avg_last4q_pct", "EPS Growth (1Y)", { text: "🍰 How much BIGGER is each person's slice of the profit pie compared to last year? This shows if the company is earning MORE money per share!", preference: "high" })}</th>
                             <th className="py-3 px-6 text-left">{header("pe_mid_used", "1Y Mid PE", { text: "🏷️ The 'typical price tag' investors paid for this stock over the last year. Think of it as the average sticker price!", preference: "neutral" })}</th>
                             <th className="py-3 px-6 text-left">{header("current_pe", "Current PE", { text: "🏷️ How many years of profit you're paying for TODAY. Like buying a lemonade stand: if it earns $5/year and costs $50, the PE is 10 (you'd wait 10 years to break even).", preference: "low" })}</th>
-                            <th className="py-3 px-6 text-left">{header("current_pe_gap_pct", "PE Gap", { text: "💰 Is this stock ON SALE or OVERPRICED? Negative (green) = Cheaper than usual! Positive (red) = More expensive than usual!", preference: "low" })}</th>
-                            <th className="py-3 px-6 text-left">{header("ret_6m_pct", "6M Return", { text: "📈 Our crystal ball prediction: How much your money could grow in 6 months if our model is right! (Not guaranteed, just an estimate!)", preference: "high" })}</th>
-                            <th className="py-3 px-6 text-left">{header("ret_1y_pct", "1Y Return", { text: "📈 Our 1-year prediction: If you invested $100 today, how much could it become in a year? (Based on our model, not a promise!)", preference: "high" })}</th>
-                            <th className="py-3 px-6 text-left">{header("ret_2y_pct", "2Y Return", { text: "📈 Our 2-year prediction: The long game! How much could your investment grow if you wait 2 whole years? (Model estimate only!)", preference: "high" })}</th>
+                            <th className="py-3 px-6 text-left">{header("current_pe_gap_pct", "vs Fair Value", { text: "💰 Is this stock ON SALE or OVERPRICED? Negative (green) = Cheaper than usual! Positive (red) = More expensive than usual!", preference: "low" })}</th>
+
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -231,6 +381,9 @@ export default function RankingsTable({ rows }: Props) {
                                     </Link>
                                 </td>
                                 <td className="py-4 px-6 text-sm">
+                                    {fmtMarketCap(r.market_cap)}
+                                </td>
+                                <td className="py-4 px-6 text-sm">
                                     {fmtPrice(r.current_close)}
                                 </td>
                                 <td className="py-4 px-6 text-sm">
@@ -245,20 +398,12 @@ export default function RankingsTable({ rows }: Props) {
                                 <td className="py-4 px-6 text-sm">
                                     {fmtPeGap(r.current_pe_gap_pct)}
                                 </td>
-                                <td className="py-4 px-6 text-sm">
-                                    {fmtPct(r.ret_6m_pct)}
-                                </td>
-                                <td className="py-4 px-6 text-sm">
-                                    {fmtPct(r.ret_1y_pct)}
-                                </td>
-                                <td className="py-4 px-6 text-sm">
-                                    {fmtPct(r.ret_2y_pct)}
-                                </td>
+
                             </tr>
                         ))}
                         {sortedAndFiltered.length === 0 && (
                             <tr>
-                                <td colSpan={10} className="py-12 text-center text-gray-400 text-sm">
+                                <td colSpan={8} className="py-12 text-center text-gray-400 text-sm">
                                     No assets found matching "{query}"
                                 </td>
                             </tr>
@@ -271,7 +416,7 @@ export default function RankingsTable({ rows }: Props) {
             <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/30 dark:bg-gray-900/30 flex flex-col gap-1">
                 <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
                     <span>Showing Top 10 by default</span>
-                    <span>Click headers to sort</span>
+                    <span>Click headers to sort • Hover over column headers for explanations</span>
                 </div>
                 <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/30 rounded-lg text-xs text-amber-800 dark:text-amber-200">
                     <strong>Note:</strong> Returns are model estimates based on historical EPS trends and the 1-year PE ratio mid-point. PE ratios are based on interpolated EPS (as actual trailing EPS are spot values only on earning report days).

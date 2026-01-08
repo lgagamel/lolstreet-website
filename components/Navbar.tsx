@@ -38,13 +38,13 @@ export default function Navbar() {
                             href="/tools/compound-interest"
                             className="text-sm font-medium text-gray-600 hover:text-indigo-600 dark:text-gray-300 dark:hover:text-indigo-400 transition-colors flex items-center gap-1"
                         >
-                            Compound Calc 💸
+                            Investment Growth 💰
                         </Link>
                         <Link
                             href="/tools/dictionary"
                             className="text-sm font-medium text-gray-600 hover:text-indigo-600 dark:text-gray-300 dark:hover:text-indigo-400 transition-colors flex items-center gap-1"
                         >
-                            Kids Dictionary 📚
+                            Simple Dictionary 📚
                         </Link>
                     </nav>
                 </div>
