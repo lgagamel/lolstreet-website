@@ -99,7 +99,8 @@ export async function getRankings(sortMetric: SortMetric = "ret_1y_pct"): Promis
 // Per-ticker series
 // -----------------------
 export async function getStockSeries(ticker: string): Promise<StockDailyRow[]> {
-    const safe = ticker.toUpperCase().replace(/[^A-Z0-9.\-_]/g, "");
+    let safe = ticker.toUpperCase().replace(/[^A-Z0-9.\-_]/g, "");
+    if (safe === "CON") safe = "_CON";
     const filePath = path.join(DATA_DIR, "price", `${safe}.csv`);
     const text = await fs.readFile(filePath, "utf-8");
     const { headers, rows } = parseCSV(text);
@@ -138,7 +139,8 @@ export async function getStockSeries(ticker: string): Promise<StockDailyRow[]> {
 }
 
 export async function getFinanceData(ticker: string): Promise<import("../types").StockFinanceRow[]> {
-    const safe = ticker.toUpperCase().replace(/[^A-Z0-9.\-_]/g, "");
+    let safe = ticker.toUpperCase().replace(/[^A-Z0-9.\-_]/g, "");
+    if (safe === "CON") safe = "_CON";
     const filePath = path.join(DATA_DIR, "finance", `${safe}.csv`);
 
     try {
@@ -166,7 +168,8 @@ export async function getFinanceData(ticker: string): Promise<import("../types")
 }
 
 export async function getFinanceForecast(ticker: string): Promise<import("../types").StockFinanceForecastRow[]> {
-    const safe = ticker.toUpperCase().replace(/[^A-Z0-9.\-_]/g, "");
+    let safe = ticker.toUpperCase().replace(/[^A-Z0-9.\-_]/g, "");
+    if (safe === "CON") safe = "_CON";
     const filePath = path.join(DATA_DIR, "finance_forecast", `${safe}.csv`);
 
     try {
@@ -244,7 +247,8 @@ export async function getYoutubeLink(ticker: string): Promise<string | null> {
 }
 
 export async function getNews(ticker: string): Promise<import("../types").NewsEvent[]> {
-    const safe = ticker.toUpperCase().replace(/[^A-Z0-9.\-_]/g, "");
+    let safe = ticker.toUpperCase().replace(/[^A-Z0-9.\-_]/g, "");
+    if (safe === "CON") safe = "_CON";
     const filePath = path.join(DATA_DIR, "news", `${safe}.csv`);
 
     try {
