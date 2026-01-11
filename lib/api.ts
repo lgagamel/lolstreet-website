@@ -1,10 +1,21 @@
 // lib/api.ts
-import { promises as fs } from "fs";
-import path from "path";
 import type { SortMetric, StockDailyRow, StockReturnSummaryRow } from "../types";
 
-// Repo root: process.cwd()
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_BASE_URL = process.env.DATA_BASE_URL || "";
+
+async function fetchRemoteData(relativePath: string): Promise<string | null> {
+    const url = `${DATA_BASE_URL}/data/${relativePath}`;
+    try {
+        const response = await fetch(url, { next: { revalidate: 60 } });
+        if (!response.ok) {
+            return null;
+        }
+        return await response.text();
+    } catch (e) {
+        console.error(`Error fetching remote data from ${url}:`, e);
+        return null;
+    }
+}
 
 function clean(s: string | undefined): string {
     return (s ?? "").trim();
@@ -49,8 +60,8 @@ function idx(headers: string[], name: string): number {
 // Summary: rankings
 // -----------------------
 export async function getRankings(sortMetric: SortMetric = "ret_1y_pct"): Promise<StockReturnSummaryRow[]> {
-    const filePath = path.join(DATA_DIR, "summary", "stock_return_summary.csv");
-    const text = await fs.readFile(filePath, "utf-8");
+    const text = await fetchRemoteData("summary/stock_return_summary.csv");
+    if (!text) return [];
     const { headers, rows } = parseCSV(text);
 
     const it = (col: string) => idx(headers, col);
@@ -101,8 +112,8 @@ export async function getRankings(sortMetric: SortMetric = "ret_1y_pct"): Promis
 export async function getStockSeries(ticker: string): Promise<StockDailyRow[]> {
     let safe = ticker.toUpperCase().replace(/[^A-Z0-9.\-_]/g, "");
     if (safe === "CON") safe = "_CON";
-    const filePath = path.join(DATA_DIR, "price", `${safe}.csv`);
-    const text = await fs.readFile(filePath, "utf-8");
+    const text = await fetchRemoteData(`price/${safe}.csv`);
+    if (!text) return [];
     const { headers, rows } = parseCSV(text);
 
     const it = (col: string) => idx(headers, col);
@@ -141,10 +152,11 @@ export async function getStockSeries(ticker: string): Promise<StockDailyRow[]> {
 export async function getFinanceData(ticker: string): Promise<import("../types").StockFinanceRow[]> {
     let safe = ticker.toUpperCase().replace(/[^A-Z0-9.\-_]/g, "");
     if (safe === "CON") safe = "_CON";
-    const filePath = path.join(DATA_DIR, "finance", `${safe}.csv`);
+
+    const text = await fetchRemoteData(`finance/${safe}.csv`);
+    if (!text) return [];
 
     try {
-        const text = await fs.readFile(filePath, "utf-8");
         const { headers, rows } = parseCSV(text);
         const it = (col: string) => idx(headers, col);
 
@@ -170,10 +182,11 @@ export async function getFinanceData(ticker: string): Promise<import("../types")
 export async function getFinanceForecast(ticker: string): Promise<import("../types").StockFinanceForecastRow[]> {
     let safe = ticker.toUpperCase().replace(/[^A-Z0-9.\-_]/g, "");
     if (safe === "CON") safe = "_CON";
-    const filePath = path.join(DATA_DIR, "finance_forecast", `${safe}.csv`);
+
+    const text = await fetchRemoteData(`finance_forecast/${safe}.csv`);
+    if (!text) return [];
 
     try {
-        const text = await fs.readFile(filePath, "utf-8");
         const { headers, rows } = parseCSV(text);
         const it = (col: string) => idx(headers, col);
 
@@ -206,15 +219,10 @@ export function getCurrentClose(series: StockDailyRow[]): { date: string; close:
 }
 
 export async function getYoutubeLink(ticker: string): Promise<string | null> {
-    const filePath = path.join(DATA_DIR, "youtube", `${ticker}.txt`);
+    const text = await fetchRemoteData(`youtube/${ticker}.txt`);
+    if (!text) return null;
 
-    try {
-        await fs.access(filePath);
-    } catch {
-        return null;
-    }
-
-    const fileContent = await fs.readFile(filePath, "utf-8");
+    const fileContent = text;
     let rawUrl = fileContent.trim();
     if (!rawUrl) return null;
 
@@ -249,10 +257,11 @@ export async function getYoutubeLink(ticker: string): Promise<string | null> {
 export async function getNews(ticker: string): Promise<import("../types").NewsEvent[]> {
     let safe = ticker.toUpperCase().replace(/[^A-Z0-9.\-_]/g, "");
     if (safe === "CON") safe = "_CON";
-    const filePath = path.join(DATA_DIR, "news", `${safe}.csv`);
+
+    const text = await fetchRemoteData(`news/${safe}.csv`);
+    if (!text) return [];
 
     try {
-        const text = await fs.readFile(filePath, "utf-8");
         const { headers, rows } = parseCSV(text);
         const it = (col: string) => idx(headers, col);
 
