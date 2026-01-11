@@ -137,6 +137,15 @@ export default function PEGaugeD3({ current, low, mid, high, width: initialWidth
                 .text(item.label);
         });
 
+        // --- Color Scale for Needle ---
+        const colorScale = d3.scaleLinear<string>()
+            .domain([low, mid, high])
+            .range(["#22c55e", "#eab308", "#ef4444"])
+            .interpolate(d3.interpolateRgb) // Force RGB interpolation
+            .clamp(true);
+
+        const needleColor = colorScale(current);
+
         // --- Needle ---
         const needleAngle = scale(current);
         const needleLen = innerRadius - 5;
@@ -148,13 +157,15 @@ export default function PEGaugeD3({ current, low, mid, high, width: initialWidth
         // Sleeker needle (narrow triangle)
         needleG.append("path")
             .attr("d", `M 0 ${-needleLen} L ${-needleRadius} 0 L ${needleRadius} 0 Z`)
-            .attr("fill", "#111827") // gray-900
+            .attr("fill", needleColor)
+            .attr("stroke", "#111827") // Add dark stroke for contrast
+            .attr("stroke-width", 0.5)
             .style("filter", "drop-shadow(0 2px 3px rgb(0 0 0 / 0.4))");
 
         // Pivot
         g.append("circle")
             .attr("r", Math.max(5, w * 0.02)) // Larger polished pivot
-            .attr("fill", "#111827")
+            .attr("fill", needleColor)
             .attr("stroke", "#f9fafb")
             .attr("stroke-width", 2)
             .style("filter", "drop-shadow(0 1px 2px rgb(0 0 0 / 0.2))");
@@ -167,7 +178,7 @@ export default function PEGaugeD3({ current, low, mid, high, width: initialWidth
             .attr("text-anchor", "middle")
             .attr("font-size", `${centerFontSize}px`)
             .attr("font-weight", "bold")
-            .attr("fill", "#1f2937")
+            .attr("fill", needleColor)
             .text(current.toFixed(2));
 
         g.append("text")

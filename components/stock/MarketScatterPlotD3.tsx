@@ -76,9 +76,10 @@ export default function MarketScatterPlotD3({ data }: MarketScatterPlotD3Props) 
             .nice();
 
         // Helpers
-        const makeXGridlines = (scale: d3.ScaleLinear<number, number>) => d3.axisBottom(scale).ticks(10);
+        const isMobile = width < 500;
+        const makeXGridlines = (scale: d3.ScaleLinear<number, number>) => d3.axisBottom(scale).ticks(isMobile ? 5 : 10);
         const makeYGridlines = (scale: d3.ScaleLinear<number, number>) => d3.axisLeft(scale).ticks(10);
-        const makeXAxis = (scale: d3.ScaleLinear<number, number>) => d3.axisBottom(scale).tickFormat(d => `${d}%`);
+        const makeXAxis = (scale: d3.ScaleLinear<number, number>) => d3.axisBottom(scale).ticks(isMobile ? 5 : 10).tickFormat(d => `${d}%`);
         const makeYAxis = (scale: d3.ScaleLinear<number, number>) => d3.axisLeft(scale).tickFormat(d => `${d}x`);
 
         // Gridlines

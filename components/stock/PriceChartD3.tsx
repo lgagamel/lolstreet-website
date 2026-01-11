@@ -869,17 +869,39 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
 
 
 
-        // Disable Zoom on chart (keep tooltip capture)
+        // --- Zoom Implementation (Pinch-to-zoom) ---
+        const fullXScale = d3.scaleTime().domain(fullX).range([0, innerWidth]);
+        const zoom = d3.zoom<SVGRectElement, unknown>()
+            .scaleExtent([1, 20])
+            .extent([[0, 0], [innerWidth, innerHeight]])
+            .translateExtent([[0, 0], [innerWidth, innerHeight]])
+            .on("zoom", (event) => {
+                if (!event.sourceEvent || event.sourceEvent.type === 'zoom') return;
+                const newXScale = event.transform.rescaleX(fullXScale);
+                const [d0, d1] = newXScale.domain();
+                onXDomainChange?.([new Date(d0), new Date(d1)]);
+            });
+
         const zoomRect = mainG.select<SVGRectElement>(".zoom-capture")
             .attr("width", innerWidth).attr("height", innerHeight)
-            .style("cursor", "crosshair") // Changed cursor
+            .style("cursor", "crosshair")
             .attr("pointer-events", "all")
-            .on(".zoom", null); // Remove zoom listeners
+            .style("touch-action", "pan-y")
+            .call(zoom);
+
+        // Sync Zoom Transform from current xDomain (handle external button clicks)
+        const s = innerWidth / (fullXScale(currentXDomain[1]) - fullXScale(currentXDomain[0]));
+        const tx = -fullXScale(currentXDomain[0]) * s;
+        zoomRect.call(zoom.transform, d3.zoomIdentity.translate(tx, 0).scale(s));
 
         // Remove previous d3.zoom call entirely
         // Just Tooltip logic
         // Tooltip Interaction with Focus Line
-        zoomRect.on("mousemove", (event) => {
+        zoomRect.on("mousemove touchmove", (event) => {
+            if (event.touches && event.touches.length > 1) {
+                setTooltip(p => ({ ...p, visible: false }));
+                return;
+            }
             const [mx] = d3.pointer(event);
             const date = xScale.invert(mx);
             const index = bisect(data, date);
