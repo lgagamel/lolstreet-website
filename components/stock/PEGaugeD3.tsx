@@ -174,7 +174,7 @@ export default function PEGaugeD3({ current, low, mid, high, width: initialWidth
         const centerFontSize = Math.max(14, Math.min(22, w * 0.05));
         g.append("text")
             .attr("x", 0)
-            .attr("y", 25)
+            .attr("y", 35)
             .attr("text-anchor", "middle")
             .attr("font-size", `${centerFontSize}px`)
             .attr("font-weight", "bold")
@@ -183,7 +183,7 @@ export default function PEGaugeD3({ current, low, mid, high, width: initialWidth
 
         g.append("text")
             .attr("x", 0)
-            .attr("y", 25 + centerFontSize * 0.8)
+            .attr("y", 35 + centerFontSize * 0.8)
             .attr("text-anchor", "middle")
             .attr("font-size", `${centerFontSize * 0.5}px`)
             .attr("fill", "#6b7280")
