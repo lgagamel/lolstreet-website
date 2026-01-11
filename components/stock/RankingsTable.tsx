@@ -55,6 +55,7 @@ function fmtPrice(v: number) {
 export default function RankingsTable({ rows, query, onQueryChange, filters, onFilterChange }: Props) {
     const [sort, setSort] = useState<SortState>({ metric: "market_cap", dir: "desc" });
     const [showFilters, setShowFilters] = useState(false);
+    const [showMobileSort, setShowMobileSort] = useState(false);
     const [limit, setLimit] = useState(10);
 
     const handleFilterChange = (key: keyof FilterState, val: string) => {
@@ -179,21 +180,36 @@ export default function RankingsTable({ rows, query, onQueryChange, filters, onF
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                    <button
-                        onClick={() => setShowFilters(!showFilters)}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors flex items-center gap-2 ${showFilters
-                            ? "bg-indigo-50 border-indigo-200 text-indigo-600 dark:bg-indigo-900/20 dark:border-indigo-800 dark:text-indigo-400"
-                            : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700"
-                            }`}
-                    >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                        </svg>
-                        Filters
-                        {(Object.values(filters).some(v => v !== "")) && (
-                            <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-                        )}
-                    </button>
+                    <div className="flex gap-2 w-full sm:w-auto">
+                        <button
+                            onClick={() => setShowFilters(!showFilters)}
+                            className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-medium border transition-colors flex items-center justify-center gap-2 ${showFilters
+                                ? "bg-indigo-50 border-indigo-200 text-indigo-600 dark:bg-indigo-900/20 dark:border-indigo-800 dark:text-indigo-400"
+                                : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700"
+                                }`}
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                            </svg>
+                            Filters
+                            {(Object.values(filters).some(v => v !== "")) && (
+                                <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                            )}
+                        </button>
+
+                        <button
+                            onClick={() => setShowMobileSort(!showMobileSort)}
+                            className={`sm:hidden flex-1 px-4 py-2 rounded-lg text-sm font-medium border transition-colors flex items-center justify-center gap-2 ${showMobileSort
+                                ? "bg-indigo-50 border-indigo-200 text-indigo-600 dark:bg-indigo-900/20 dark:border-indigo-800 dark:text-indigo-400"
+                                : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700"
+                                }`}
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+                            </svg>
+                            Sort
+                        </button>
+                    </div>
 
                     <div className="relative flex-1">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -210,6 +226,39 @@ export default function RankingsTable({ rows, query, onQueryChange, filters, onF
                     </div>
                 </div>
             </div>
+
+            {/* Mobile Sort Panel */}
+            {showMobileSort && (
+                <div className="sm:hidden p-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/30 animate-in slide-in-from-top-2 duration-200">
+                    <div className="grid grid-cols-2 gap-2">
+                        {[
+                            { id: "ticker", label: "Asset Name" },
+                            { id: "market_cap", label: "Market Cap" },
+                            { id: "current_close", label: "Price" },
+                            { id: "eps_yoy_growth_avg_last4q_pct", label: "EPS Growth" },
+                            { id: "current_pe", label: "PE Ratio" },
+                            { id: "current_pe_gap_pct", label: "vs Fair Value" },
+                        ].map((opt) => (
+                            <button
+                                key={opt.id}
+                                onClick={() => {
+                                    toggle(opt.id as SortMetric);
+                                    setShowMobileSort(false);
+                                }}
+                                className={`px-3 py-2 text-sm font-medium rounded-lg text-left flex justify-between items-center ${sort.metric === opt.id
+                                    ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+                                    : "bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                                    }`}
+                            >
+                                {opt.label}
+                                {sort.metric === opt.id && (
+                                    <span>{sort.dir === "asc" ? "▲" : "▼"}</span>
+                                )}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Filter Panel */}
             {showFilters && (
