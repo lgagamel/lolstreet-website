@@ -11,9 +11,10 @@ type Props = {
     onUpdateAssumedPE?: (vals: { low?: number; mid?: number; high?: number }) => void;
     xDomain?: [Date, Date];
     onXDomainChange?: (domain: [Date, Date]) => void;
+    enableTransition?: boolean;
 };
 
-export default function PEChartD3({ model, height = 340, className = "", onUpdateAssumedPE, xDomain, onXDomainChange }: Props) {
+export default function PEChartD3({ model, height = 340, className = "", onUpdateAssumedPE, xDomain, onXDomainChange, enableTransition = true }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
     const svgRef = useRef<d3.Selection<SVGSVGElement, unknown, null, undefined> | null>(null);
     const [yDomain, setYDomain] = useState<[number, number] | null>(null);
@@ -34,9 +35,8 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
 
     const data = useMemo(() => model.points, [model]);
 
-    // Removed useEffect that set yDomain to [model.yMin, model.yMax]
-    // This allows the initial Y domain to be calculated based on visible data
-
+    // Helper for duration
+    const tDuration = enableTransition ? 750 : 0;
 
     useEffect(() => {
         if (!data.length || !containerRef.current) return;
@@ -154,14 +154,14 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
 
         mainG.select<SVGGElement>(".axis-x")
             .attr("transform", `translate(0,${innerHeight})`)
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .call(xAxis)
             .on("end", function () {
                 d3.select(this).attr("class", "axis-x text-xs font-mono text-gray-500").select(".domain").remove();
             });
 
         mainG.select<SVGGElement>(".axis-y")
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .call(yAxis)
             .on("end", function () {
                 d3.select(this).attr("class", "axis-y text-xs font-mono text-gray-500").select(".domain").remove();
@@ -169,7 +169,7 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
 
         const yAxisGrid = d3.axisLeft(yScale).tickSize(-innerWidth).tickFormat(() => "").ticks(isMobile ? 4 : 6);
         mainG.select<SVGGElement>(".grid-lines")
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .call(yAxisGrid)
             .style("stroke-dasharray", "4 4")
             .selectAll("line").attr("stroke", "currentColor");
@@ -217,27 +217,27 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
         };
 
         if (high !== null && mid !== null) {
-            ensurePath(bandsG, "area-mid-high", { fill: "#fbbf24", opacity: 0.15, "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", areaMidHigh as any);
+            ensurePath(bandsG, "area-mid-high", { fill: "#fbbf24", opacity: 0.15, "pointer-events": "none" }).datum(bandsData).transition().duration(tDuration).attr("d", areaMidHigh as any);
         }
         if (low !== null && mid !== null) {
-            ensurePath(bandsG, "area-low-mid", { fill: "#fbbf24", opacity: 0.15, "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", areaLowMid as any);
+            ensurePath(bandsG, "area-low-mid", { fill: "#fbbf24", opacity: 0.15, "pointer-events": "none" }).datum(bandsData).transition().duration(tDuration).attr("d", areaLowMid as any);
         }
 
         if (mid !== null) {
             const lineMid = d3.line<PEBandPoint>().x(d => xScale(new Date(d.date))).y(() => yScale(mid!));
-            ensurePath(bandsG, "line-fair", { fill: "none", stroke: "#f59e0b", "stroke-width": 1.5, "stroke-dasharray": "4 4", "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", lineMid as any);
+            ensurePath(bandsG, "line-fair", { fill: "none", stroke: "#f59e0b", "stroke-width": 1.5, "stroke-dasharray": "4 4", "pointer-events": "none" }).datum(bandsData).transition().duration(tDuration).attr("d", lineMid as any);
         }
         if (high !== null) {
             const lineHigh = d3.line<PEBandPoint>().x(d => xScale(new Date(d.date))).y(() => yScale(high!));
-            ensurePath(bandsG, "line-high", { fill: "none", stroke: "#9ca3af", "stroke-width": 1, "stroke-dasharray": "4 4", "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", lineHigh as any);
+            ensurePath(bandsG, "line-high", { fill: "none", stroke: "#9ca3af", "stroke-width": 1, "stroke-dasharray": "4 4", "pointer-events": "none" }).datum(bandsData).transition().duration(tDuration).attr("d", lineHigh as any);
         }
         if (low !== null) {
             const lineLow = d3.line<PEBandPoint>().x(d => xScale(new Date(d.date))).y(() => yScale(low!));
-            ensurePath(bandsG, "line-low", { fill: "none", stroke: "#9ca3af", "stroke-width": 1, "stroke-dasharray": "4 4", "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", lineLow as any);
+            ensurePath(bandsG, "line-low", { fill: "none", stroke: "#9ca3af", "stroke-width": 1, "stroke-dasharray": "4 4", "pointer-events": "none" }).datum(bandsData).transition().duration(tDuration).attr("d", lineLow as any);
         }
 
         const peG = mainG.select(".pe-line");
-        ensurePath(peG, "current-pe-line", { fill: "none", stroke: "#3b82f6", "stroke-width": 2.5, "pointer-events": "none" }).datum(model.points).transition().duration(750).attr("d", lineGenerator as any);
+        ensurePath(peG, "current-pe-line", { fill: "none", stroke: "#3b82f6", "stroke-width": 2.5, "pointer-events": "none" }).datum(model.points).transition().duration(tDuration).attr("d", lineGenerator as any);
 
         // --- Clear Old Annotations ---
         mainG.selectAll(".current-pe-highlight, .y-axis-bounds-annotations").remove();

@@ -14,9 +14,10 @@ type Props = {
     news?: NewsEvent[];
     finance?: StockFinanceRow[];
     forecast?: StockFinanceForecastRow[];
+    enableTransition?: boolean;
 };
 
-export default function PriceChartD3({ model, height = 400, className = "", xDomain, onXDomainChange, news, finance, forecast }: Props) {
+export default function PriceChartD3({ model, height = 400, className = "", xDomain, onXDomainChange, news, finance, forecast, enableTransition = true }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
     const svgRef = useRef<d3.Selection<SVGSVGElement, unknown, null, undefined> | null>(null);
     const tooltipTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -40,8 +41,8 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
 
     const data = useMemo(() => model.points, [model]);
 
-    // Removed useEffect that set yDomain to [model.yMin, model.yMax]
-    // This allows the initial Y domain to be calculated based on visible data
+    // Helper for duration
+    const tDuration = enableTransition ? 750 : 0;
 
     useEffect(() => {
         if (!data.length || !containerRef.current) return;
@@ -50,82 +51,57 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
         const width = container.clientWidth;
         const isMobile = width < 640;
         const h = height;
+
         // Margins for Scrollbars
         const margin = {
             top: 20,
-            right: isMobile ? 20 : 50,
-            left: isMobile ? 45 : 60,
+            right: isMobile ? 10 : 50,
+            left: isMobile ? 40 : 60,
             bottom: isMobile ? 60 : 80
         };
         const innerWidth = width - margin.left - margin.right;
         const innerHeight = h - margin.top - margin.bottom;
 
         if (!svgRef.current) {
-            const svg = d3.select(container)
-                .append("svg")
-                .style("overflow", "visible")
-                .attr("class", "chart-svg");
-
+            const svg = d3.select(container).append("svg").style("overflow", "visible").attr("class", "chart-svg");
             svgRef.current = svg;
-
             const defs = svg.append("defs");
-            const grad = defs.append("linearGradient").attr("id", "gradientPrice").attr("x1", "0").attr("y1", "0").attr("x2", "0").attr("y2", "1");
-            grad.append("stop").attr("offset", "0%").attr("stop-color", "#8b5cf6").attr("stop-opacity", 0.5);
-            grad.append("stop").attr("offset", "100%").attr("stop-color", "#8b5cf6").attr("stop-opacity", 0);
 
             // Clip Path
             defs.append("clipPath").attr("id", "clip-price").append("rect");
 
-            // Drop Shadow Filter
-            const filter = defs.append("filter").attr("id", "dropShadow").attr("height", "130%");
-            filter.append("feGaussianBlur").attr("in", "SourceAlpha").attr("stdDeviation", 1);
-            filter.append("feOffset").attr("dx", 0).attr("dy", 1).attr("result", "offsetblur");
-            filter.append("feComponentTransfer").append("feFuncA").attr("type", "linear").attr("slope", 0.3);
-            const merge = filter.append("feMerge");
-            merge.append("feMergeNode");
-            merge.append("feMergeNode").attr("in", "SourceGraphic");
+            const mainG = svg.append("g").attr("class", "main-g");
+            mainG.append("rect").attr("class", "zoom-capture").attr("fill", "transparent");
+            mainG.append("g").attr("class", "grid-lines opacity-5");
+            mainG.append("g").attr("class", "bands-area").attr("clip-path", "url(#clip-price)").style("pointer-events", "none");
+            mainG.append("g").attr("class", "price-line").attr("clip-path", "url(#clip-price)").style("pointer-events", "none");
 
-            const g = svg.append("g").attr("class", "main-g");
-            g.append("rect").attr("class", "zoom-capture").attr("fill", "transparent").style("pointer-events", "all");
-            g.append("g").attr("class", "grid-lines opacity-5").style("pointer-events", "none");
-            g.append("g").attr("class", "bands-area").attr("clip-path", "url(#clip-price)").style("pointer-events", "none");
-            g.append("g").attr("class", "price-line").attr("clip-path", "url(#clip-price)").style("pointer-events", "none");
+            // Axes
+            const xAxisG = mainG.append("g").attr("class", "axis-x");
+            const yAxisG = mainG.append("g").attr("class", "axis-y");
 
-            // Axes Groups
-            const xAxisG = g.append("g").attr("class", "axis-x");
-            const yAxisG = g.append("g").attr("class", "axis-y");
-
-
-            g.append("g").attr("class", "news-markers").attr("clip-path", "url(#clip-price)");
-            g.append("g").attr("class", "scroll-layer"); // Layer for scrollbars
-            g.append("g").attr("class", "legend-layer"); // Unclipped and on top
+            mainG.append("g").attr("class", "drag-layer");
+            mainG.append("g").attr("class", "legend-layer");
+            mainG.append("g").attr("class", "scroll-layer");
         }
 
         const svg = svgRef.current!;
         svg.attr("width", width).attr("height", h).attr("viewBox", `0 0 ${width} ${h}`);
         svg.select("#clip-price rect").attr("width", innerWidth).attr("height", innerHeight);
-
         const mainG = svg.select<SVGGElement>(".main-g").attr("transform", `translate(${margin.left},${margin.top})`);
 
-        // Define bisector for interactions
-        const bisect = d3.bisector<PriceBandPoint, Date>((d) => new Date(d.date)).center;
-
-        // Domains
+        // Default X domain: ±6 months from today (1-year window)
         const calculateDefaultXDomain = () => {
             if (xDomain) return xDomain;
-
-            // Default to ±3 months from today (6-month window)
-            const today = new Date();
-            const threeMonthsAgo = new Date(today);
-            threeMonthsAgo.setMonth(today.getMonth() - 3);
-            const threeMonthsAhead = new Date(today);
-            threeMonthsAhead.setMonth(today.getMonth() + 3);
-
-            return [threeMonthsAgo, threeMonthsAhead] as [Date, Date];
+            // Fallback
+            const end = new Date();
+            const start = new Date();
+            start.setFullYear(end.getFullYear() - 1);
+            return [start, end] as [Date, Date];
         };
         const currentXDomain = calculateDefaultXDomain();
 
-        // Calculate Y domain based on visible data in the X range
+        // Calculate Y domain based on visible data
         const calculateYDomain = (): [number, number] => {
             if (yDomain) return yDomain;
 
@@ -136,52 +112,54 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
 
             if (visibleData.length === 0) return [model.yMin, model.yMax];
 
-            // Include Price, High, and Low in the range calculation
-            const values = visibleData.flatMap(d => [d.close, d.high, d.low]).filter(v => v !== null) as number[];
+            // Consider close, fair (mid), high, low
+            const values = visibleData.flatMap(d => [d.close, d.mid, d.high, d.low].filter(v => v !== null) as number[]);
+
             if (values.length === 0) return [model.yMin, model.yMax];
 
             const minVal = Math.min(...values);
             const maxVal = Math.max(...values);
-            const padding = (maxVal - minVal) * 0.1; // 10% padding
+            const padding = (maxVal - minVal) * 0.1;
 
             return [Math.max(0, minVal - padding), maxVal + padding];
         };
         const currentYDomain: [number, number] = calculateYDomain();
 
-        // Update Refs for Drag Handlers
+        // Update Refs
         xDomainRef.current = currentXDomain;
         yDomainRef.current = currentYDomain;
 
         const xScale = d3.scaleTime().domain(currentXDomain).range([0, innerWidth]);
         const yScale = d3.scaleLinear().domain(currentYDomain).range([innerHeight, 0]);
 
-        // Axes
         const xAxis = d3.axisBottom(xScale).ticks(isMobile ? 3 : 6).tickSize(0).tickPadding(10);
+        // Changed to Axis Left
         const yAxis = d3.axisLeft(yScale).ticks(isMobile ? 4 : 6).tickSize(0).tickPadding(10);
 
         mainG.select<SVGGElement>(".axis-x")
             .attr("transform", `translate(0,${innerHeight})`)
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .call(xAxis)
             .on("end", function () {
                 d3.select(this).attr("class", "axis-x text-xs font-mono text-gray-500").select(".domain").remove();
             });
 
         mainG.select<SVGGElement>(".axis-y")
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .call(yAxis)
             .on("end", function () {
                 d3.select(this).attr("class", "axis-y text-xs font-mono text-gray-500").select(".domain").remove();
             });
 
         mainG.select<SVGGElement>(".grid-lines")
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .call(d3.axisLeft(yScale).tickSize(-innerWidth).ticks(6).tickFormat(() => ""))
             .style("stroke-dasharray", "4 4")
             .selectAll("line").attr("stroke", "currentColor");
         mainG.select(".grid-lines").select(".domain").remove();
 
         // Content
+        const bisect = d3.bisector<PriceBandPoint, Date>((d) => new Date(d.date)).center;
         const lineGen = d3.line<PriceBandPoint>().defined(d => d.close !== null).curve(d3.curveMonotoneX).x(d => xScale(new Date(d.date))).y(d => yScale(d.close!));
         const areaMidHigh = d3.area<PriceBandPoint>().defined(d => d.mid !== null && d.high !== null).curve(d3.curveMonotoneX).x(d => xScale(new Date(d.date))).y0(d => yScale(d.mid!)).y1(d => yScale(d.high!));
         const areaLowMid = d3.area<PriceBandPoint>().defined(d => d.mid !== null && d.low !== null).curve(d3.curveMonotoneX).x(d => xScale(new Date(d.date))).y0(d => yScale(d.low!)).y1(d => yScale(d.mid!));
@@ -211,14 +189,12 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
             return p;
         };
 
-        ensurePath(bandsG, "area-mid-high", { fill: "#fbbf24", opacity: 0.15, "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", areaMidHigh as any);
-        ensurePath(bandsG, "area-low-mid", { fill: "#fbbf24", opacity: 0.15, "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", areaLowMid as any);
-        ensurePath(bandsG, "line-fair", { fill: "none", stroke: "#f59e0b", "stroke-width": 1.5, "stroke-dasharray": "4 4", "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", lineFair as any);
-        ensurePath(bandsG, "line-high", { fill: "none", stroke: "#9ca3af", "stroke-width": 1, "stroke-dasharray": "4 4", "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", lineHigh as any);
-        ensurePath(bandsG, "line-low", { fill: "none", stroke: "#9ca3af", "stroke-width": 1, "stroke-dasharray": "4 4", "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", lineLow as any);
+        ensurePath(bandsG, "area-mid-high", { fill: "#fbbf24", opacity: 0.15, "pointer-events": "none" }).datum(bandsData).transition().duration(tDuration).attr("d", areaMidHigh as any);
+        ensurePath(bandsG, "area-low-mid", { fill: "#fbbf24", opacity: 0.15, "pointer-events": "none" }).datum(bandsData).transition().duration(tDuration).attr("d", areaLowMid as any);
+        ensurePath(bandsG, "line-fair", { fill: "none", stroke: "#f59e0b", "stroke-width": 1.5, "stroke-dasharray": "4 4", "pointer-events": "none" }).datum(bandsData).transition().duration(tDuration).attr("d", lineFair as any);
+        ensurePath(bandsG, "line-high", { fill: "none", stroke: "#9ca3af", "stroke-width": 1, "stroke-dasharray": "4 4", "pointer-events": "none" }).datum(bandsData).transition().duration(tDuration).attr("d", lineHigh as any);
+        ensurePath(bandsG, "line-low", { fill: "none", stroke: "#9ca3af", "stroke-width": 1, "stroke-dasharray": "4 4", "pointer-events": "none" }).datum(bandsData).transition().duration(tDuration).attr("d", lineLow as any);
 
-        // Fair Value & Bounds Labels with Collision Detection
-        // Fair Value & Bounds & Price Labels with Collision Detection
         // Professional Box Legend
         const legendG = mainG.select(".legend-layer");
         legendG.selectAll("*").remove();
@@ -281,7 +257,7 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
         }
 
         const priceG = mainG.select(".price-line");
-        ensurePath(priceG, "current-price-line", { fill: "none", stroke: "#8b5cf6", "stroke-width": 2.5, "pointer-events": "none" }).datum(data).transition().duration(750).attr("d", lineGen as any);
+        ensurePath(priceG, "current-price-line", { fill: "none", stroke: "#8b5cf6", "stroke-width": 2.5, "pointer-events": "none" }).datum(data).transition().duration(tDuration).attr("d", lineGen as any);
 
         // --- Clear Old Annotations ---
         mainG.selectAll(".current-price-highlight, .y-axis-bounds-annotations").remove();

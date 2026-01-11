@@ -11,9 +11,10 @@ type Props = {
     className?: string;
     xDomain?: [Date, Date];
     onXDomainChange?: (domain: [Date, Date]) => void;
+    enableTransition?: boolean;
 };
 
-export default function EPSChartD3({ data, forecast = [], height = 300, className = "", xDomain, onXDomainChange }: Props) {
+export default function EPSChartD3({ data, forecast = [], height = 300, className = "", xDomain, onXDomainChange, enableTransition = true }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
     const svgRef = useRef<d3.Selection<SVGSVGElement, unknown, null, undefined> | null>(null);
     const [tooltip, setTooltip] = useState<{
@@ -31,6 +32,9 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
 
     // Y-Axis State
     const [yDomain, setYDomain] = useState<[number, number] | null>(null);
+
+    // Helper for duration
+    const tDuration = enableTransition ? 750 : 0;
 
     // Initial Y Domain Calculation (incorporating forecast)
     // Initial Y Domain Calculation removed to allow dynamic scaling
@@ -163,21 +167,21 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
 
         mainG.select<SVGGElement>(".axis-x")
             .attr("transform", `translate(0,${innerHeight})`)
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .call(xAxis)
             .on("end", function () {
                 d3.select(this).attr("class", "axis-x text-xs font-mono text-gray-500").select(".domain").remove();
             });
 
         mainG.select<SVGGElement>(".axis-y")
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .call(yAxis)
             .on("end", function () {
                 d3.select(this).attr("class", "axis-y text-xs font-mono text-gray-500").select(".domain").remove();
             });
 
         mainG.select<SVGGElement>(".grid-lines")
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .call(d3.axisLeft(yScale).tickSize(-innerWidth).ticks(5).tickFormat(() => ""))
             .style("stroke-dasharray", "4 4")
             .selectAll("line").attr("stroke", "currentColor");
@@ -189,7 +193,7 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
         // Historical Bars
         const barsLayer = mainG.select(".bars-layer");
         const barsReported = barsLayer.selectAll<SVGRectElement, any>(".bar-reported").data(data, d => d.reportedDate);
-        barsReported.exit().transition().duration(750).attr("height", 0).attr("y", yScale(0)).remove();
+        barsReported.exit().transition().duration(tDuration).attr("height", 0).attr("y", yScale(0)).remove();
         barsReported.enter()
             .append("rect")
             .attr("class", "bar-reported")
@@ -199,7 +203,7 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
             .attr("height", 0)
             .attr("rx", 3)
             .merge(barsReported as any)
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .attr("x", (d) => xScale(new Date(d.reportedDate)) - barWidth / 2)
             .attr("y", (d) => yScale(Math.max(0, d.reportedEPS || 0)))
             .attr("width", barWidth)
@@ -217,7 +221,7 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
             .attr("stroke", "white")
             .attr("stroke-width", 1)
             .merge(pointsEst as any)
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .attr("cx", (d) => xScale(new Date(d.reportedDate)))
             .attr("cy", (d) => yScale(d.estimatedEPS || 0));
 
@@ -234,7 +238,7 @@ export default function EPSChartD3({ data, forecast = [], height = 300, classNam
             .attr("rx", 2)
             .style("stroke-dasharray", "4 2")
             .merge(barsForecast as any)
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .attr("x", (d) => xScale(new Date(d.reportedDate)) - barWidth / 2)
             .attr("y", (d) => yScale(Math.max(0, d.eps_forecast || 0)))
             .attr("width", barWidth)

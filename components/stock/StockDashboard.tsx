@@ -83,6 +83,12 @@ export default function StockDashboard({ series, finance, forecast, summary, new
     };
 
     const [xDomain, setXDomain] = useState<[Date, Date]>(getDefaultXDomain);
+    const [enableTransition, setEnableTransition] = useState(true);
+
+    const handleXDomainChange = (domain: [Date, Date]) => {
+        setEnableTransition(false);
+        setXDomain(domain);
+    };
 
     const handleRangeSelect = (period: '1M' | '3M' | '6M' | '1Y' | '5Y' | 'MAX') => {
         // Find latest date with a valid close price
@@ -122,6 +128,7 @@ export default function StockDashboard({ series, finance, forecast, summary, new
             }
         }
 
+        setEnableTransition(true);
         setXDomain([start, end]);
     };
 
@@ -236,30 +243,30 @@ export default function StockDashboard({ series, finance, forecast, summary, new
             )}
 
             <section>
-                {renderHeader("Price vs. Fair Value", "bg-violet-600", "price",
-                    <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto pb-1 no-scrollbar">
-                        {(['1M', '3M', '6M', '1Y', '5Y', 'MAX'] as const).map((period) => (
-                            <button
-                                key={period}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleRangeSelect(period);
-                                }}
-                                className="text-[10px] sm:text-xs px-2 py-1 bg-white hover:bg-gray-100 dark:bg-gray-900/50 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded transition-all active:scale-95 whitespace-nowrap"
-                            >
-                                {period}
-                            </button>
-                        ))}
+                <div className="flex items-center gap-1 sm:gap-2 pb-2 pl-1 no-scrollbar overflow-x-auto">
+                    {(['1M', '3M', '6M', '1Y', '5Y', 'MAX'] as const).map((period) => (
                         <button
+                            key={period}
                             onClick={(e) => {
-                                e.stopPropagation();
-                                setXDomain(getDefaultXDomain());
+                                handleRangeSelect(period);
                             }}
-                            className="text-[10px] sm:text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded transition-colors whitespace-nowrap ml-1"
+                            className="text-[10px] sm:text-xs px-2 py-1 bg-white hover:bg-gray-100 dark:bg-gray-900/50 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded transition-all active:scale-95 whitespace-nowrap"
                         >
-                            Reset
+                            {period}
                         </button>
-                    </div>,
+                    ))}
+                    <button
+                        onClick={(e) => {
+                            setEnableTransition(true);
+                            setXDomain(getDefaultXDomain());
+                        }}
+                        className="text-[10px] sm:text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded transition-colors whitespace-nowrap ml-1"
+                    >
+                        Reset
+                    </button>
+                </div>
+                {renderHeader("Price vs. Fair Value", "bg-violet-600", "price",
+                    undefined,
                     <>📊 <strong>See if the stock is trading above or below our estimate.</strong> The bands show our fair value range based on PE ratios and earnings growth.</>
                 )}
                 {visibility.price && (
@@ -268,10 +275,11 @@ export default function StockDashboard({ series, finance, forecast, summary, new
                             model={priceModel}
                             height={400}
                             xDomain={xDomain}
-                            onXDomainChange={setXDomain}
+                            onXDomainChange={handleXDomainChange}
                             news={news}
                             finance={finance}
                             forecast={forecast}
+                            enableTransition={enableTransition}
                         />
                     </div>
                 )}
@@ -287,7 +295,8 @@ export default function StockDashboard({ series, finance, forecast, summary, new
                                 height={340}
                                 onUpdateAssumedPE={handleUpdatePE}
                                 xDomain={xDomain}
-                                onXDomainChange={setXDomain}
+                                onXDomainChange={handleXDomainChange}
+                                enableTransition={enableTransition}
                             />
                         </div>
                     )}
@@ -303,7 +312,8 @@ export default function StockDashboard({ series, finance, forecast, summary, new
                             forecast={forecast}
                             height={300}
                             xDomain={xDomain}
-                            onXDomainChange={setXDomain}
+                            onXDomainChange={handleXDomainChange}
+                            enableTransition={enableTransition}
                         />
                     </div>
                 )}
@@ -317,7 +327,8 @@ export default function StockDashboard({ series, finance, forecast, summary, new
                             data={finance}
                             height={300}
                             xDomain={xDomain}
-                            onXDomainChange={setXDomain}
+                            onXDomainChange={handleXDomainChange}
+                            enableTransition={enableTransition}
                         />
                     </div>
                 )}
@@ -331,7 +342,8 @@ export default function StockDashboard({ series, finance, forecast, summary, new
                             data={finance}
                             height={300}
                             xDomain={xDomain}
-                            onXDomainChange={setXDomain}
+                            onXDomainChange={handleXDomainChange}
+                            enableTransition={enableTransition}
                         />
                     </div>
                 )}
@@ -345,7 +357,8 @@ export default function StockDashboard({ series, finance, forecast, summary, new
                             data={finance}
                             height={300}
                             xDomain={xDomain}
-                            onXDomainChange={setXDomain}
+                            onXDomainChange={handleXDomainChange}
+                            enableTransition={enableTransition}
                         />
                     </div>
                 )}

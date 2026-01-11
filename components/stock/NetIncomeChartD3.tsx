@@ -11,6 +11,7 @@ interface Props {
     height?: number;
     xDomain?: [Date, Date];
     onXDomainChange?: (domain: [Date, Date]) => void;
+    enableTransition?: boolean;
 }
 
 // Helper to format large numbers (Billion, Million)
@@ -22,7 +23,7 @@ function formatValue(v: number | null): string {
     return `$${v.toFixed(0)}`;
 }
 
-export default function NetIncomeChartD3({ data, height = 300, xDomain, onXDomainChange }: Props) {
+export default function NetIncomeChartD3({ data, height = 300, xDomain, onXDomainChange, enableTransition = true }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
     const svgRef = useRef<d3.Selection<SVGSVGElement, unknown, null, undefined> | null>(null);
     const [tooltip, setTooltip] = useState<{
@@ -40,6 +41,9 @@ export default function NetIncomeChartD3({ data, height = 300, xDomain, onXDomai
 
     // Y-Axis State
     const [yDomain, setYDomain] = useState<[number, number] | null>(null);
+
+    // Helper for duration
+    const tDuration = enableTransition ? 750 : 0;
 
     // Initial Y Domain Calculation
     // Initial Y Domain Calculation removed to allow dynamic scaling
@@ -146,21 +150,21 @@ export default function NetIncomeChartD3({ data, height = 300, xDomain, onXDomai
 
         mainG.select<SVGGElement>(".axis-x")
             .attr("transform", `translate(0,${innerHeight})`)
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .call(xAxis)
             .on("end", function () {
                 d3.select(this).attr("class", "axis-x text-xs font-mono text-gray-500").select(".domain").remove();
             });
 
         mainG.select<SVGGElement>(".axis-y")
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .call(yAxis)
             .on("end", function () {
                 d3.select(this).attr("class", "axis-y text-xs font-mono text-gray-500").select(".domain").remove();
             });
 
         mainG.select<SVGGElement>(".grid-lines")
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .call(d3.axisLeft(y).tickSize(-innerWidth).ticks(5).tickFormat(() => ""))
             .style("stroke-dasharray", "4 4")
             .selectAll("line").attr("stroke", "currentColor");
@@ -171,7 +175,7 @@ export default function NetIncomeChartD3({ data, height = 300, xDomain, onXDomai
         // Historical Bars
         const barsLayer = mainG.select(".bars-layer");
         const barsHist = barsLayer.selectAll<SVGRectElement, any>(".bar-hist").data(data, d => d.reportedDate);
-        barsHist.exit().transition().duration(750).attr("height", 0).attr("y", y(0)).remove();
+        barsHist.exit().transition().duration(tDuration).attr("height", 0).attr("y", y(0)).remove();
         barsHist.enter()
             .append("rect")
             .attr("class", "bar-hist")
@@ -180,7 +184,7 @@ export default function NetIncomeChartD3({ data, height = 300, xDomain, onXDomai
             .attr("width", barWidth)
             .attr("height", 0)
             .merge(barsHist as any)
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .attr("x", d => x(new Date(d.reportedDate)) - barWidth / 2)
             .attr("y", d => y(Math.max(0, d.netIncome || 0)))
             .attr("width", barWidth)

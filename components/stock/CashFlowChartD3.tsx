@@ -10,6 +10,7 @@ type Props = {
     className?: string;
     xDomain?: [Date, Date];
     onXDomainChange?: (domain: [Date, Date]) => void;
+    enableTransition?: boolean;
 };
 
 // Helper format
@@ -20,7 +21,7 @@ const formatCurrency = (val: number) => {
     return `$${val.toFixed(0)}`;
 };
 
-export default function CashFlowChartD3({ data, height = 300, className = "", xDomain, onXDomainChange }: Props) {
+export default function CashFlowChartD3({ data, height = 300, className = "", xDomain, onXDomainChange, enableTransition = true }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
     const svgRef = useRef<d3.Selection<SVGSVGElement, unknown, null, undefined> | null>(null);
     const [tooltip, setTooltip] = useState<{
@@ -37,6 +38,9 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
     const dragContextY = useRef<{ startY: number, domain: [number, number] } | null>(null);
 
     const [yDomain, setYDomain] = useState<[number, number] | null>(null);
+
+    // Helper for duration
+    const tDuration = enableTransition ? 750 : 0;
 
     // Initial Y Domain
     // Initial Y Domain Calculation removed to allow dynamic scaling
@@ -162,21 +166,21 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
 
         mainG.select<SVGGElement>(".axis-x")
             .attr("transform", `translate(0,${innerHeight})`)
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .call(xAxis)
             .on("end", function () {
                 d3.select(this).attr("class", "axis-x text-xs font-mono text-gray-500").select(".domain").remove();
             });
 
         mainG.select<SVGGElement>(".axis-y")
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .call(yAxis)
             .on("end", function () {
                 d3.select(this).attr("class", "axis-y text-xs font-mono text-gray-500").select(".domain").remove();
             });
 
         mainG.select<SVGGElement>(".grid-lines")
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .call(d3.axisLeft(y).tickSize(-innerWidth).ticks(5).tickFormat(() => ""))
             .style("stroke-dasharray", "4 4")
             .selectAll("line").attr("stroke", "currentColor");
@@ -196,7 +200,7 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
             .attr("class", "bar-ocf")
             .attr("rx", 3)
             .merge(barsOCF as any)
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .attr("x", d => x(new Date(d.reportedDate)) - barWidth * 1.5)
             .attr("y", d => y(Math.max(0, d.operatingCashflow || 0)))
             .attr("width", barWidth)
@@ -211,7 +215,7 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
             .attr("class", "bar-capex")
             .attr("rx", 3)
             .merge(barsCapEx as any)
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .attr("x", d => x(new Date(d.reportedDate)) - barWidth * 0.5)
             .attr("y", d => y(Math.max(0, d.capitalExpenditures || 0)))
             .attr("width", barWidth)
@@ -233,7 +237,7 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
             return p;
         };
 
-        ensurePath(dataLayer, "fcf-line", { fill: "none", stroke: "#3b82f6", "stroke-width": 2, "pointer-events": "none" }).datum(data).transition().duration(750).attr("d", lineFCFGen as any);
+        ensurePath(dataLayer, "fcf-line", { fill: "none", stroke: "#3b82f6", "stroke-width": 2, "pointer-events": "none" }).datum(data).transition().duration(tDuration).attr("d", lineFCFGen as any);
 
         // FCF Points
         const pointsFCF = dataLayer.selectAll<SVGCircleElement, any>(".point-fcf").data(data, d => d.reportedDate);
@@ -245,7 +249,7 @@ export default function CashFlowChartD3({ data, height = 300, className = "", xD
             .attr("fill", "#3b82f6")
             .attr("stroke", "white")
             .merge(pointsFCF as any)
-            .transition().duration(750)
+            .transition().duration(tDuration)
             .attr("cx", d => x(new Date(d.reportedDate)))
             .attr("cy", d => y(d.freeCashFlow || 0));
 
