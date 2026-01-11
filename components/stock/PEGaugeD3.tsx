@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 
 type Props = {
@@ -12,12 +12,30 @@ type Props = {
     height?: number;
 };
 
-export default function PEGaugeD3({ current, low, mid, high, width = 400, height = 250 }: Props) {
+export default function PEGaugeD3({ current, low, mid, high, width: initialWidth = 400, height: initialHeight = 250 }: Props) {
     const svgRef = useRef<SVGSVGElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [dimensions, setDimensions] = useState({ width: initialWidth, height: initialHeight });
+
+    useEffect(() => {
+        if (!containerRef.current) return;
+
+        const observer = new ResizeObserver((entries) => {
+            if (!entries[0]) return;
+            const { width } = entries[0].contentRect;
+            // Maintain a reasonable aspect ratio for a gauge
+            const newHeight = Math.max(180, Math.min(initialHeight, width * 0.6));
+            setDimensions({ width, height: newHeight });
+        });
+
+        observer.observe(containerRef.current);
+        return () => observer.disconnect();
+    }, [initialHeight]);
 
     useEffect(() => {
         if (!svgRef.current) return;
 
+        const { width, height } = dimensions;
         const svg = d3.select(svgRef.current);
         svg.selectAll("*").remove();
 
@@ -28,16 +46,14 @@ export default function PEGaugeD3({ current, low, mid, high, width = 400, height
         // Gauge Geometry
         // Semi-circle from -PI/2 to PI/2
         const radius = Math.min(w / 2, h);
-        const arcWidth = 40;
+        const arcWidth = Math.min(40, w * 0.1); // Scale arc width
         const outerRadius = radius - 10;
         const innerRadius = outerRadius - arcWidth;
 
         const g = svg.append("g")
-            .attr("transform", `translate(${margin.left + w / 2}, ${margin.top + h - 30})`); // Lift up slightly to make room for footnote
+            .attr("transform", `translate(${margin.left + w / 2}, ${margin.top + h - 30})`);
 
         // --- Linear Scale ---
-        // Range from Low (5th %ile) to High (95th %ile)
-        // Median will be positioned proportionally (not necessarily centered).
         const scale = d3.scaleLinear()
             .domain([low, high])
             .range([-Math.PI / 2, Math.PI / 2])
@@ -53,8 +69,6 @@ export default function PEGaugeD3({ current, low, mid, high, width = 400, height
             .attr("x2", "100%")
             .attr("y2", "0%");
 
-        // Colors: Green -> Yellow -> Red
-        // Since it's symmetrical, Yellow is always at 50% (Top).
         linearGradient.append("stop").attr("offset", "0%").attr("stop-color", "#22c55e"); // Green
         linearGradient.append("stop").attr("offset", "50%").attr("stop-color", "#eab308"); // Yellow
         linearGradient.append("stop").attr("offset", "100%").attr("stop-color", "#ef4444"); // Red
@@ -73,17 +87,15 @@ export default function PEGaugeD3({ current, low, mid, high, width = 400, height
             .attr("stroke-width", 1);
 
         // --- Ticks & Labels ---
-        // We show ticks for Low, Mid, High
         const tickItems = [
-            { val: low, label: "5th %ile", sub: "Low" },
-            { val: mid, label: "Median", sub: "Mid" },
-            { val: high, label: "95th %ile", sub: "High" }
+            { val: low, label: "5th %ile" },
+            { val: mid, label: "Median" },
+            { val: high, label: "95th %ile" }
         ];
 
         tickItems.forEach((item) => {
             const angle = scale(item.val);
 
-            // Coords
             const tickStartR = outerRadius;
             const tickEndR = outerRadius + 8;
             const labelR = outerRadius + 22;
@@ -96,91 +108,98 @@ export default function PEGaugeD3({ current, low, mid, high, width = 400, height
             const labelX = labelR * Math.sin(angle);
             const labelY = -labelR * Math.cos(angle);
 
-            // Tick Line
             g.append("line")
                 .attr("x1", tickX1).attr("y1", tickY1)
                 .attr("x2", tickX2).attr("y2", tickY2)
                 .attr("stroke", "#4b5563")
                 .attr("stroke-width", 2);
 
-            // Value Label
+            // Scale font size based on width
+            const fontSize = Math.max(9, Math.min(12, w * 0.03));
+
             g.append("text")
                 .attr("x", labelX)
                 .attr("y", labelY)
                 .attr("dy", "0em")
                 .attr("text-anchor", "middle")
                 .attr("fill", "#111827")
-                .attr("font-size", "12px")
+                .attr("font-size", `${fontSize}px`)
                 .attr("font-weight", "600")
                 .text(item.val.toFixed(2));
 
-            // Context Label (Low, Mid, High)
             g.append("text")
                 .attr("x", labelX)
-                .attr("y", labelY + 12)
+                .attr("y", labelY + fontSize)
                 .attr("dy", "0em")
                 .attr("text-anchor", "middle")
                 .attr("fill", "#6b7280")
-                .attr("font-size", "10px")
+                .attr("font-size", `${fontSize - 2}px`)
                 .text(item.label);
         });
 
         // --- Needle ---
         const needleAngle = scale(current);
-        const needleLen = innerRadius - 10;
-        const needleRadius = 5;
+        const needleLen = innerRadius - 5;
+        const needleRadius = Math.max(2, w * 0.01); // Narrower
 
         const needleG = g.append("g")
             .attr("transform", `rotate(${needleAngle * 180 / Math.PI})`);
 
+        // Sleeker needle (narrow triangle)
         needleG.append("path")
             .attr("d", `M 0 ${-needleLen} L ${-needleRadius} 0 L ${needleRadius} 0 Z`)
-            .attr("fill", "#1f2937")
-            .style("filter", "drop-shadow(0 1px 2px rgb(0 0 0 / 0.3))");
+            .attr("fill", "#111827") // gray-900
+            .style("filter", "drop-shadow(0 2px 3px rgb(0 0 0 / 0.4))");
 
         // Pivot
         g.append("circle")
-            .attr("r", 8)
-            .attr("fill", "#1f2937")
-            .attr("stroke", "white")
-            .attr("stroke-width", 2);
+            .attr("r", Math.max(5, w * 0.02)) // Larger polished pivot
+            .attr("fill", "#111827")
+            .attr("stroke", "#f9fafb")
+            .attr("stroke-width", 2)
+            .style("filter", "drop-shadow(0 1px 2px rgb(0 0 0 / 0.2))");
 
         // --- Current Value Display ---
+        const centerFontSize = Math.max(14, Math.min(22, w * 0.05));
         g.append("text")
             .attr("x", 0)
             .attr("y", 25)
             .attr("text-anchor", "middle")
-            .attr("font-size", "24px")
+            .attr("font-size", `${centerFontSize}px`)
             .attr("font-weight", "bold")
             .attr("fill", "#1f2937")
             .text(current.toFixed(2));
 
         g.append("text")
             .attr("x", 0)
-            .attr("y", 45)
+            .attr("y", 25 + centerFontSize * 0.8)
             .attr("text-anchor", "middle")
-            .attr("font-size", "12px")
+            .attr("font-size", `${centerFontSize * 0.5}px`)
             .attr("fill", "#6b7280")
             .text("Current PE");
 
         // --- Footnote ---
-        g.append("text")
-            .attr("x", 0)
-            .attr("y", 75) // Lower down
-            .attr("text-anchor", "middle")
-            .attr("font-size", "10px")
-            .attr("fill", "#9ca3af")
-            .style("font-style", "italic")
-            .text("PE range (Low/High) represents the 5th and 95th percentiles of the last 1 year PE ratio history.");
+        if (w > 250) {
+            g.append("text")
+                .attr("x", 0)
+                .attr("y", 75)
+                .attr("text-anchor", "middle")
+                .attr("font-size", `${Math.max(8, w * 0.025)}px`)
+                .attr("fill", "#9ca3af")
+                .style("font-style", "italic")
+                .text("PE range represents the 5th and 95th percentiles of the last 1 year.");
+        }
 
-    }, [current, low, mid, high, width, height]);
+    }, [current, low, mid, high, dimensions]);
 
     return (
-        <svg
-            ref={svgRef}
-            width={width}
-            height={height}
-            className="overflow-visible"
-        />
+        <div ref={containerRef} className="w-full h-full min-h-[180px] flex justify-center items-center">
+            <svg
+                ref={svgRef}
+                width={dimensions.width}
+                height={dimensions.height}
+                className="overflow-visible"
+            />
+        </div>
     );
 }

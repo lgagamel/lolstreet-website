@@ -77,9 +77,10 @@ export default function CompoundInterestChartD3({
         const yMax = d3.max(data, d => d.total) || 0;
         const yScale = d3.scaleLinear().domain([0, yMax]).nice().range([innerHeight, 0]);
 
+        const isMobile = width < 640;
         // Axes
-        const xAxis = d3.axisBottom(xScale).tickFormat(d => `Year ${d}`);
-        const yAxis = d3.axisLeft(yScale).tickFormat(d => `$${(d.valueOf() / 1000).toFixed(0)}k`);
+        const xAxis = d3.axisBottom(xScale).ticks(isMobile ? 3 : 5).tickFormat(d => `Year ${d}`);
+        const yAxis = d3.axisLeft(yScale).ticks(isMobile ? 4 : 6).tickFormat(d => `$${(d.valueOf() / 1000).toFixed(0)}k`);
 
         g.select<SVGGElement>(".x-axis").call(xAxis).attr("color", "#9ca3af");
         g.select<SVGGElement>(".y-axis").call(yAxis).attr("color", "#9ca3af");

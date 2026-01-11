@@ -48,9 +48,15 @@ export default function RevenueChartD3({ data, height = 300, className = "", xDo
 
         const container = containerRef.current;
         const width = container.clientWidth;
+        const isMobile = width < 640;
         const h = height;
         // Margins: Left Y-axis, No Scrollbars
-        const margin = { top: 20, right: 30, left: 60, bottom: 50 };
+        const margin = {
+            top: 20,
+            right: isMobile ? 10 : 30,
+            left: isMobile ? 45 : 60,
+            bottom: isMobile ? 40 : 50
+        };
         const innerWidth = width - margin.left - margin.right;
         const innerHeight = h - margin.top - margin.bottom;
 
@@ -73,7 +79,7 @@ export default function RevenueChartD3({ data, height = 300, className = "", xDo
 
             const mainG = svg.append("g").attr("class", "main-g");
             mainG.append("rect").attr("class", "zoom-capture").attr("fill", "transparent");
-            mainG.append("g").attr("class", "grid-lines opacity-10");
+            mainG.append("g").attr("class", "grid-lines opacity-5");
             mainG.append("g").attr("class", "bars-layer").attr("clip-path", "url(#clip-revenue)").style("pointer-events", "none");
             mainG.append("g").attr("class", "price-line").attr("clip-path", "url(#clip-revenue)").style("pointer-events", "none");
 
@@ -91,7 +97,7 @@ export default function RevenueChartD3({ data, height = 300, className = "", xDo
         const svg = svgRef.current!;
         svg.attr("width", width).attr("height", h).attr("viewBox", `0 0 ${width} ${h}`);
         svg.select("#clip-revenue rect").attr("width", innerWidth).attr("height", innerHeight);
-        const mainG = svg.select(".main-g").attr("transform", `translate(${margin.left},${margin.top})`);
+        const mainG = svg.select<SVGGElement>(".main-g").attr("transform", `translate(${margin.left},${margin.top})`);
 
         // X Axis: Combined Time
         const allDates = [
@@ -134,27 +140,31 @@ export default function RevenueChartD3({ data, height = 300, className = "", xDo
         const y = d3.scaleLinear().domain(currentYDomain).range([innerHeight, 0]);
 
         // Axes
-        const xAxis = d3.axisBottom(x).ticks(6).tickSize(0).tickPadding(10);
+        const xAxis = d3.axisBottom(x).ticks(isMobile ? 3 : 6).tickSize(0).tickPadding(10);
         mainG.select<SVGGElement>(".axis-x")
             .attr("transform", `translate(0,${innerHeight})`)
+            .transition().duration(750)
             .call(xAxis)
-            .attr("class", "axis-x text-xs font-mono text-gray-500")
-            .select(".domain").remove();
+            .on("end", function () {
+                d3.select(this).attr("class", "axis-x text-xs font-mono text-gray-500").select(".domain").remove();
+            });
 
         // Changed to Axis Left
         const yAxis = d3.axisLeft(y)
-            .ticks(6)
+            .ticks(isMobile ? 4 : 6)
             .tickFormat((d) => d3.format(".2s")(d).replace("G", "B")) // Format billions
             .tickSize(0)
             .tickPadding(10);
 
         mainG.select<SVGGElement>(".axis-y")
-            .attr("transform", `translate(0, 0)`)
+            .transition().duration(750)
             .call(yAxis)
-            .attr("class", "axis-y text-xs font-mono text-gray-500")
-            .select(".domain").remove();
+            .on("end", function () {
+                d3.select(this).attr("class", "axis-y text-xs font-mono text-gray-500").select(".domain").remove();
+            });
 
         mainG.select<SVGGElement>(".grid-lines")
+            .transition().duration(750)
             .call(d3.axisLeft(y).tickSize(-innerWidth).ticks(5).tickFormat(() => ""))
             .style("stroke-dasharray", "4 4")
             .selectAll("line").attr("stroke", "currentColor");
@@ -165,19 +175,23 @@ export default function RevenueChartD3({ data, height = 300, className = "", xDo
 
         // Historical Bars
         const barsLayer = mainG.select(".bars-layer");
-        barsLayer.selectAll("*").remove();
-
-        barsLayer.selectAll(".bar-reported")
-            .data(data)
-            .enter()
+        const barsReported = barsLayer.selectAll<SVGRectElement, StockFinanceRow>(".bar-reported").data(data, d => d.reportedDate);
+        barsReported.exit().transition().duration(750).attr("height", 0).attr("y", y(0)).remove();
+        barsReported.enter()
             .append("rect")
             .attr("class", "bar-reported")
             .attr("x", (d) => x(new Date(d.reportedDate)) - barWidth / 2)
-            .attr("y", (d) => y(d.totalRevenue || 0))
+            .attr("y", y(0))
+            .attr("width", barWidth)
+            .attr("height", 0)
+            .attr("rx", 3)
+            .merge(barsReported as any)
+            .transition().duration(750)
+            .attr("x", (d) => x(new Date(d.reportedDate)) - barWidth / 2)
+            .attr("y", (d) => y(Math.max(0, d.totalRevenue || 0)))
             .attr("width", barWidth)
             .attr("height", (d) => Math.abs(y(d.totalRevenue || 0) - y(0)))
-            .attr("fill", "url(#gradientRevenue)") // Gradient
-            .attr("rx", 3);
+            .attr("fill", "url(#gradientRevenue)");
 
         // Forecast Bars removed
 
@@ -197,9 +211,9 @@ export default function RevenueChartD3({ data, height = 300, className = "", xDo
         ];
 
         if (data.length > 0) {
-            const itemHeight = 18;
-            const padding = 10;
-            const boxWidth = 90;
+            const itemHeight = isMobile ? 14 : 18;
+            const padding = isMobile ? 6 : 10;
+            const boxWidth = isMobile ? 75 : 90;
             const boxHeight = legendItems.length * itemHeight + padding * 2;
 
             // Background
@@ -231,7 +245,7 @@ export default function RevenueChartD3({ data, height = 300, className = "", xDo
 
                 g.append("text")
                     .attr("x", 12).attr("y", 4)
-                    .attr("font-size", "11px").attr("font-weight", "500").attr("font-family", "monospace")
+                    .attr("font-size", isMobile ? "9px" : "11px").attr("font-weight", "500").attr("font-family", "monospace")
                     .attr("fill", "#374151")
                     .text(item.label);
             });
@@ -259,6 +273,7 @@ export default function RevenueChartD3({ data, height = 300, className = "", xDo
                 g = parent.append("g").attr("class", classSelector);
                 g.append("rect").attr("class", "track").attr("fill", "#f1f5f9");
                 const thumbG = g.append("g").attr("class", "thumb-group");
+                thumbG.append("rect").attr("class", "thumb-hit").attr("fill", "transparent").style("cursor", "grab");
                 thumbG.append("rect").attr("class", "thumb").attr("fill", "#cbd5e1").style("cursor", "grab");
                 thumbG.append("g").attr("class", "grips").attr("pointer-events", "none");
                 thumbG.append("rect").attr("class", "handle-start").attr("fill", "transparent");
@@ -293,6 +308,14 @@ export default function RevenueChartD3({ data, height = 300, className = "", xDo
                     : `translate(0, ${startPos})`
                 );
 
+            const hitThickness = isMobile ? 48 : thickness;
+            const thumbHit = thumbG.select(".thumb-hit")
+                .attr("width", isH ? thumbSize : hitThickness)
+                .attr("height", isH ? hitThickness : thumbSize)
+                .attr("x", isH ? 0 : -(hitThickness - thickness) / 2)
+                .attr("y", isH ? -(hitThickness - thickness) / 2 : 0)
+                .attr("rx", hitThickness / 2);
+
             const thumb = thumbG.select(".thumb")
                 .attr("width", isH ? thumbSize : thickness)
                 .attr("height", isH ? thickness : thumbSize)
@@ -306,8 +329,8 @@ export default function RevenueChartD3({ data, height = 300, className = "", xDo
                 gripG.append("path").attr("d", gripPath).attr("stroke", "white").attr("stroke-width", 1.5).attr("opacity", 0.8);
             }
 
-            // 4. Update Interaction
-            thumb.call((d3.drag<SVGRectElement, unknown>()
+            // 4. Update Interaction - Drag on hit area
+            thumbHit.call((d3.drag<SVGRectElement, unknown>()
                 .container(g.node() as any)
                 .on("start", function (event) {
                     const p = isH ? event.x : event.y;
@@ -336,16 +359,21 @@ export default function RevenueChartD3({ data, height = 300, className = "", xDo
             const handleThickness = 12;
             const updateHandle = (type: 'start' | 'end') => {
                 const sel = thumbG.select(type === 'start' ? ".handle-start" : ".handle-end");
-                const xLoc = isH
-                    ? (type === 'start' ? 0 : thumbSize - handleThickness)
-                    : 0;
-                const yLoc = isH
-                    ? 0
-                    : (type === 'start' ? 0 : thumbSize - handleThickness);
-                const w = isH ? handleThickness : thickness;
-                const h = isH ? thickness : handleThickness;
+                const hThickness = isMobile ? 24 : handleThickness;
+                const hitThick = isMobile ? 48 : thickness;
 
-                sel.attr("x", xLoc).attr("y", yLoc).attr("width", w).attr("height", h)
+                const w = isH ? hThickness : hitThick;
+                const h = isH ? hitThick : hThickness;
+
+                const xAdjust = isH
+                    ? (type === 'start' ? 0 : thumbSize - hThickness)
+                    : -(hitThick - thickness) / 2;
+
+                const yAdjust = isH
+                    ? -(hitThick - thickness) / 2
+                    : (type === 'start' ? 0 : thumbSize - hThickness);
+
+                sel.attr("x", xAdjust).attr("y", yAdjust).attr("width", w).attr("height", h)
                     .style("cursor", isH ? "ew-resize" : "ns-resize")
                     .call((d3.drag<SVGRectElement, unknown>()
                         .container(g.node() as any)
@@ -384,10 +412,11 @@ export default function RevenueChartD3({ data, height = 300, className = "", xDo
         const fullX: [number, number] = [xExt[0]?.getTime() || 0, maxDate.getTime()];
         const fullY: [number, number] = [0, (d3.max(data, d => d.totalRevenue || 0) || 1) * 1.5];
 
-        renderScrollbar(scrollG, "scrollbar-x", 0, innerHeight + 35, innerWidth, 16, 'horizontal', fullX, [currentXDomain[0].getTime(), currentXDomain[1].getTime()],
+        const scrollThickness = isMobile ? 8 : 16;
+        renderScrollbar(scrollG, "scrollbar-x", 0, innerHeight + 35, innerWidth, scrollThickness, 'horizontal', fullX, [currentXDomain[0].getTime(), currentXDomain[1].getTime()],
             (d) => onXDomainChange && onXDomainChange([new Date(d[0]), new Date(d[1])]));
 
-        renderScrollbar(scrollG, "scrollbar-y", -margin.left - 20, 0, innerHeight, 16, 'vertical', [fullY[1], fullY[0]], [currentYDomain[1], currentYDomain[0]],
+        renderScrollbar(scrollG, "scrollbar-y", -margin.left - 20, 0, innerHeight, scrollThickness, 'vertical', [fullY[1], fullY[0]], [currentYDomain[1], currentYDomain[0]],
             (d) => setYDomain([d[1], d[0]]));
 
 
@@ -419,7 +448,6 @@ export default function RevenueChartD3({ data, height = 300, className = "", xDo
 
     return (
         <div className={`relative w-full ${className}`} ref={containerRef}>
-            <div ref={containerRef} className="w-full" />
             {tooltip.visible && tooltip.data && (
                 <div
                     className="pointer-events-none absolute z-50 rounded-lg border border-gray-200 bg-white/90 p-3 shadow-lg backdrop-blur-sm dark:border-gray-800 dark:bg-black/90 text-sm"

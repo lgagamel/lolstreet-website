@@ -55,28 +55,75 @@ export default function StockDashboard({ series, finance, forecast, summary, new
     // State for X-Axis Domain (Shared Zoom)
     // Default: Today - 6 Months to End of Data + 1 Month
     const getDefaultXDomain = (): [Date, Date] => {
-        const today = new Date();
-        const start = new Date(today);
-        start.setMonth(today.getMonth() - 12);
+        // Find latest date with a valid close price
+        const lastWithClose = [...series].reverse().find(s => s.close !== null);
+        let lastHistoricalDate = lastWithClose ? new Date(lastWithClose.date) : new Date();
 
-        // Find max date from data
-        let maxDate = today;
+        let absoluteMaxDate = new Date(lastHistoricalDate);
         if (series.length > 0) {
             const lastSeries = new Date(series[series.length - 1].date);
-            if (lastSeries > maxDate) maxDate = lastSeries;
+            if (lastSeries > absoluteMaxDate) absoluteMaxDate = lastSeries;
         }
         if (forecast.length > 0) {
             const lastForecast = new Date(forecast[forecast.length - 1].reportedDate);
-            if (lastForecast > maxDate) maxDate = lastForecast;
+            if (lastForecast > absoluteMaxDate) absoluteMaxDate = lastForecast;
+        }
+        if (finance.length > 0) {
+            const lastFinance = new Date(finance[finance.length - 1].reportedDate);
+            if (lastFinance > absoluteMaxDate) absoluteMaxDate = lastFinance;
         }
 
-        const end = new Date(maxDate);
+        const start = new Date(lastHistoricalDate);
+        start.setFullYear(lastHistoricalDate.getFullYear() - 1); // Default 1 year back from last close
+
+        const end = new Date(absoluteMaxDate);
         end.setMonth(end.getMonth() + 1);
 
         return [start, end];
     };
 
     const [xDomain, setXDomain] = useState<[Date, Date]>(getDefaultXDomain);
+
+    const handleRangeSelect = (period: '1M' | '3M' | '6M' | '1Y' | '5Y' | 'MAX') => {
+        // Find latest date with a valid close price
+        const lastWithClose = [...series].reverse().find(s => s.close !== null);
+        let lastHistoricalDate = lastWithClose ? new Date(lastWithClose.date) : new Date();
+
+        let absoluteMaxDate = new Date(lastHistoricalDate);
+        if (series.length > 0) {
+            const lastSeries = new Date(series[series.length - 1].date);
+            if (lastSeries > absoluteMaxDate) absoluteMaxDate = lastSeries;
+        }
+        if (forecast.length > 0) {
+            const lastForecast = new Date(forecast[forecast.length - 1].reportedDate);
+            if (lastForecast > absoluteMaxDate) absoluteMaxDate = lastForecast;
+        }
+        if (finance.length > 0) {
+            const lastFinance = new Date(finance[finance.length - 1].reportedDate);
+            if (lastFinance > absoluteMaxDate) absoluteMaxDate = lastFinance;
+        }
+
+        const end = new Date(absoluteMaxDate);
+        end.setMonth(end.getMonth() + 1);
+
+        let start = new Date(lastHistoricalDate);
+        if (period === '1M') start.setMonth(lastHistoricalDate.getMonth() - 1);
+        else if (period === '3M') start.setMonth(lastHistoricalDate.getMonth() - 3);
+        else if (period === '6M') start.setMonth(lastHistoricalDate.getMonth() - 6);
+        else if (period === '1Y') start.setFullYear(lastHistoricalDate.getFullYear() - 1);
+        else if (period === '5Y') start.setFullYear(lastHistoricalDate.getFullYear() - 5);
+        else if (period === 'MAX') {
+            if (series.length > 0) {
+                start = new Date(series[0].date);
+            } else if (finance.length > 0) {
+                start = new Date(finance[0].reportedDate);
+            } else {
+                start.setFullYear(lastHistoricalDate.getFullYear() - 10);
+            }
+        }
+
+        setXDomain([start, end]);
+    };
 
     // Re-calculate derived models when assumedPE changes
     const priceModel = useMemo(() => {
@@ -161,28 +208,26 @@ export default function StockDashboard({ series, finance, forecast, summary, new
                     {renderHeader("PE Valuation Gauge", "bg-indigo-600", "peGauge", undefined, <>🎯 <strong>Is this stock cheap, fair, or expensive right now?</strong> The gauge shows where the current PE sits compared to historical ranges.</>)}
                     {visibility.peGauge && summary && summary.current_pe !== null && (
                         <>
-                            <div className="mb-4 grid grid-cols-3 gap-3 text-xs">
+                            <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                                 <div className="flex items-center gap-2 p-2 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                                    <span className="w-3 h-3 rounded-full bg-green-500"></span>
+                                    <span className="w-3 h-3 rounded-full bg-green-500 flex-shrink-0"></span>
                                     <span className="font-medium text-green-700 dark:text-green-300">🟢 Bargain Zone - Might be undervalued!</span>
                                 </div>
                                 <div className="flex items-center gap-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
-                                    <span className="w-3 h-3 rounded-full bg-yellow-500"></span>
+                                    <span className="w-3 h-3 rounded-full bg-yellow-500 flex-shrink-0"></span>
                                     <span className="font-medium text-yellow-700 dark:text-yellow-300">🟡 Fair Price - About average</span>
                                 </div>
                                 <div className="flex items-center gap-2 p-2 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
-                                    <span className="w-3 h-3 rounded-full bg-red-500"></span>
+                                    <span className="w-3 h-3 rounded-full bg-red-500 flex-shrink-0"></span>
                                     <span className="font-medium text-red-700 dark:text-red-300">🔴 Premium Zone - Paying extra for growth!</span>
                                 </div>
                             </div>
-                            <div className="bg-gray-50/50 dark:bg-gray-900/50 rounded-xl border border-gray-100 dark:border-gray-800 p-4 shadow-sm flex justify-center">
+                            <div className="bg-gray-50/50 dark:bg-gray-900/50 rounded-xl border border-gray-100 dark:border-gray-800 p-4 shadow-sm flex justify-center h-[200px] sm:h-[280px]">
                                 <PEGaugeD3
                                     current={summary.current_pe}
                                     low={summary.pe_low_used ?? 0}
                                     mid={summary.pe_mid_used ?? 0}
                                     high={summary.pe_high_used ?? 100}
-                                    width={400}
-                                    height={250}
                                 />
                             </div>
                         </>
@@ -192,15 +237,29 @@ export default function StockDashboard({ series, finance, forecast, summary, new
 
             <section>
                 {renderHeader("Price vs. Fair Value", "bg-violet-600", "price",
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setXDomain(getDefaultXDomain());
-                        }}
-                        className="text-xs px-3 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded transition-colors"
-                    >
-                        Reset Zoom
-                    </button>,
+                    <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto pb-1 no-scrollbar">
+                        {(['1M', '3M', '6M', '1Y', '5Y', 'MAX'] as const).map((period) => (
+                            <button
+                                key={period}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRangeSelect(period);
+                                }}
+                                className="text-[10px] sm:text-xs px-2 py-1 bg-white hover:bg-gray-100 dark:bg-gray-900/50 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded transition-all active:scale-95 whitespace-nowrap"
+                            >
+                                {period}
+                            </button>
+                        ))}
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setXDomain(getDefaultXDomain());
+                            }}
+                            className="text-[10px] sm:text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded transition-colors whitespace-nowrap ml-1"
+                        >
+                            Reset
+                        </button>
+                    </div>,
                     <>📊 <strong>See if the stock is trading above or below our estimate.</strong> The bands show our fair value range based on PE ratios and earnings growth.</>
                 )}
                 {visibility.price && (

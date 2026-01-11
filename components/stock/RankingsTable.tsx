@@ -55,6 +55,7 @@ function fmtPrice(v: number) {
 export default function RankingsTable({ rows, query, onQueryChange, filters, onFilterChange }: Props) {
     const [sort, setSort] = useState<SortState>({ metric: "market_cap", dir: "desc" });
     const [showFilters, setShowFilters] = useState(false);
+    const [limit, setLimit] = useState(10);
 
     const handleFilterChange = (key: keyof FilterState, val: string) => {
         onFilterChange({ ...filters, [key]: val });
@@ -119,7 +120,10 @@ export default function RankingsTable({ rows, query, onQueryChange, filters, onF
         return withRank;
     }, [rows, sort]);
 
-    const top10 = sortedAndFiltered.slice(0, 10);
+    const visibleRows = sortedAndFiltered.slice(0, limit);
+    const hasMore = sortedAndFiltered.length > limit;
+
+    const handleLoadMore = () => setLimit(prev => prev + 20);
 
     function toggle(metric: SortMetric) {
         setSort((prev) => {
@@ -309,7 +313,7 @@ export default function RankingsTable({ rows, query, onQueryChange, filters, onF
 
             {/* Mobile Card View (Visible on small screens) */}
             <div className="block sm:hidden divide-y divide-gray-100 dark:divide-gray-800">
-                {top10.map((r, i) => (
+                {visibleRows.map((r, i) => (
                     <div key={r.ticker} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
                         <div className="flex justify-between items-start mb-3">
                             <div className="flex items-center gap-3">
@@ -363,7 +367,7 @@ export default function RankingsTable({ rows, query, onQueryChange, filters, onF
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                        {top10.map((r, i) => (
+                        {visibleRows.map((r, i) => (
                             <tr
                                 key={r.ticker}
                                 className="group hover:bg-gray-50/80 dark:hover:bg-gray-800/50 transition-colors"
@@ -412,10 +416,22 @@ export default function RankingsTable({ rows, query, onQueryChange, filters, onF
                 </table>
             </div>
 
+            {/* Load More Button */}
+            {hasMore && (
+                <div className="p-4 border-t border-gray-100 dark:border-gray-800 flex justify-center bg-gray-50/20 dark:bg-gray-900/20">
+                    <button
+                        onClick={handleLoadMore}
+                        className="px-6 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all shadow-sm"
+                    >
+                        Load More Assets ({sortedAndFiltered.length - limit} remaining)
+                    </button>
+                </div>
+            )}
+
             {/* Footer */}
             <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/30 dark:bg-gray-900/30 flex flex-col gap-1">
                 <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
-                    <span>Showing Top 10 by default</span>
+                    <span>Showing {visibleRows.length} of {sortedAndFiltered.length} assets</span>
                     <span>Click headers to sort • Hover over column headers for explanations</span>
                 </div>
                 <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/30 rounded-lg text-xs text-amber-800 dark:text-amber-200">

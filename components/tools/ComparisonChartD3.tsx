@@ -89,15 +89,16 @@ export default function ComparisonChartD3({ series, isRacing, onRaceEnd }: Props
         const xScale = d3.scaleTime().domain(xExtent).range([0, innerWidth]);
         const yScale = d3.scaleLinear().domain([yMin, yMax]).range([innerHeight, 0]);
 
+        const isMobile = width < 640;
         // Axes
         g.select<SVGGElement>(".x-axis")
             .transition().duration(750)
-            .call(d3.axisBottom(xScale).ticks(5))
+            .call(d3.axisBottom(xScale).ticks(isMobile ? 3 : 5))
             .attr("font-family", "monospace").attr("color", "#6b7280");
 
         g.select<SVGGElement>(".y-axis")
             .transition().duration(750)
-            .call(d3.axisLeft(yScale).tickFormat(d => `${d}%`))
+            .call(d3.axisLeft(yScale).ticks(isMobile ? 4 : 6).tickFormat(d => `${d}%`))
             .attr("font-family", "monospace").attr("color", "#6b7280");
 
         // Zero Line

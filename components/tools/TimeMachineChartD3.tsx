@@ -95,9 +95,10 @@ export default function TimeMachineChartD3({
         const yMax = d3.max(data, d => d.value) || initialValue;
         const yScale = d3.scaleLinear().domain([0, yMax * 1.1]).range([innerHeight, 0]);
 
+        const isMobile = width < 640;
         // Axes
-        const xAxis = d3.axisBottom(xScale).ticks(5);
-        const yAxis = d3.axisLeft(yScale).tickFormat(d => `$${d.valueOf().toLocaleString()}`);
+        const xAxis = d3.axisBottom(xScale).ticks(isMobile ? 3 : 5);
+        const yAxis = d3.axisLeft(yScale).ticks(isMobile ? 4 : 8).tickFormat(d => `$${d.valueOf().toLocaleString()}`);
 
         g.select<SVGGElement>(".x-axis").call(xAxis).attr("color", "#9ca3af").attr("font-family", "monospace");
         g.select<SVGGElement>(".y-axis").call(yAxis).attr("color", "#9ca3af").attr("font-family", "monospace");

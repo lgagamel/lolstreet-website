@@ -48,10 +48,15 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
 
         const container = containerRef.current;
         const width = container.clientWidth;
+        const isMobile = width < 640;
         const h = height;
         // Margins for Scrollbars
-        // Adjusted Margins: Moved Y-axis space to left, reduced right margin
-        const margin = { top: 20, right: 50, left: 60, bottom: 80 };
+        const margin = {
+            top: 20,
+            right: isMobile ? 20 : 50,
+            left: isMobile ? 45 : 60,
+            bottom: isMobile ? 60 : 80
+        };
         const innerWidth = width - margin.left - margin.right;
         const innerHeight = h - margin.top - margin.bottom;
 
@@ -82,7 +87,7 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
 
             const g = svg.append("g").attr("class", "main-g");
             g.append("rect").attr("class", "zoom-capture").attr("fill", "transparent").style("pointer-events", "all");
-            g.append("g").attr("class", "grid-lines opacity-10").style("pointer-events", "none");
+            g.append("g").attr("class", "grid-lines opacity-5").style("pointer-events", "none");
             g.append("g").attr("class", "bands-area").attr("clip-path", "url(#clip-price)").style("pointer-events", "none");
             g.append("g").attr("class", "price-line").attr("clip-path", "url(#clip-price)").style("pointer-events", "none");
 
@@ -100,7 +105,7 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
         svg.attr("width", width).attr("height", h).attr("viewBox", `0 0 ${width} ${h}`);
         svg.select("#clip-price rect").attr("width", innerWidth).attr("height", innerHeight);
 
-        const mainG = svg.select(".main-g").attr("transform", `translate(${margin.left},${margin.top})`);
+        const mainG = svg.select<SVGGElement>(".main-g").attr("transform", `translate(${margin.left},${margin.top})`);
 
         // Define bisector for interactions
         const bisect = d3.bisector<PriceBandPoint, Date>((d) => new Date(d.date)).center;
@@ -151,22 +156,29 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
         const yScale = d3.scaleLinear().domain(currentYDomain).range([innerHeight, 0]);
 
         // Axes
-        const xAxis = d3.axisBottom(xScale).tickSize(0).tickPadding(10);
-        // Changed to Axis Left
-        const yAxis = d3.axisLeft(yScale).ticks(6).tickSize(0).tickPadding(10);
+        const xAxis = d3.axisBottom(xScale).ticks(isMobile ? 3 : 6).tickSize(0).tickPadding(10);
+        const yAxis = d3.axisLeft(yScale).ticks(isMobile ? 4 : 6).tickSize(0).tickPadding(10);
 
         mainG.select<SVGGElement>(".axis-x")
             .attr("transform", `translate(0,${innerHeight})`)
+            .transition().duration(750)
             .call(xAxis)
-            .attr("class", "axis-x text-xs font-mono text-gray-500")
-            .select(".domain").remove();
+            .on("end", function () {
+                d3.select(this).attr("class", "axis-x text-xs font-mono text-gray-500").select(".domain").remove();
+            });
 
         mainG.select<SVGGElement>(".axis-y")
-            .attr("transform", `translate(0, 0)`) // Moved to x=0
+            .transition().duration(750)
             .call(yAxis)
-            .attr("class", "axis-y text-xs font-mono text-gray-500")
-            .select(".domain").remove();
-        mainG.select<SVGGElement>(".grid-lines").call(d3.axisLeft(yScale).tickSize(-innerWidth).ticks(6).tickFormat(() => "")).style("stroke-dasharray", "4 4").selectAll("line").attr("stroke", "currentColor");
+            .on("end", function () {
+                d3.select(this).attr("class", "axis-y text-xs font-mono text-gray-500").select(".domain").remove();
+            });
+
+        mainG.select<SVGGElement>(".grid-lines")
+            .transition().duration(750)
+            .call(d3.axisLeft(yScale).tickSize(-innerWidth).ticks(6).tickFormat(() => ""))
+            .style("stroke-dasharray", "4 4")
+            .selectAll("line").attr("stroke", "currentColor");
         mainG.select(".grid-lines").select(".domain").remove();
 
         // Content
@@ -174,11 +186,14 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
         const areaMidHigh = d3.area<PriceBandPoint>().defined(d => d.mid !== null && d.high !== null).curve(d3.curveMonotoneX).x(d => xScale(new Date(d.date))).y0(d => yScale(d.mid!)).y1(d => yScale(d.high!));
         const areaLowMid = d3.area<PriceBandPoint>().defined(d => d.mid !== null && d.low !== null).curve(d3.curveMonotoneX).x(d => xScale(new Date(d.date))).y0(d => yScale(d.low!)).y1(d => yScale(d.mid!));
         const lineFair = d3.line<PriceBandPoint>().defined(d => d.mid !== null).curve(d3.curveMonotoneX).x(d => xScale(new Date(d.date))).y(d => yScale(d.mid!));
+        const lineHigh = d3.line<PriceBandPoint>().defined(d => d.high !== null).curve(d3.curveMonotoneX).x(d => xScale(new Date(d.date))).y(d => yScale(d.high!));
+        const lineLow = d3.line<PriceBandPoint>().defined(d => d.low !== null).curve(d3.curveMonotoneX).x(d => xScale(new Date(d.date))).y(d => yScale(d.low!));
 
         // Filter data for bands (Last 1 year only)
-        const today = new Date();
-        const oneYearAgo = new Date(today);
-        oneYearAgo.setFullYear(today.getFullYear() - 1);
+        const lastWithClose = [...data].reverse().find(d => d.close !== null);
+        const lastDate = lastWithClose ? new Date(lastWithClose.date) : new Date();
+        const oneYearAgo = new Date(lastDate);
+        oneYearAgo.setFullYear(lastDate.getFullYear() - 1);
 
         const bandsData = data.filter(d => {
             const date = new Date(d.date);
@@ -186,16 +201,21 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
         });
 
         const bandsG = mainG.select(".bands-area");
-        bandsG.selectAll("*").remove();
-        bandsG.append("path").datum(bandsData).attr("fill", "#fbbf24").attr("opacity", 0.15).attr("d", areaMidHigh).attr("pointer-events", "none");
-        bandsG.append("path").datum(bandsData).attr("fill", "#fbbf24").attr("opacity", 0.15).attr("d", areaLowMid).attr("pointer-events", "none");
-        bandsG.append("path").datum(bandsData).attr("fill", "none").attr("stroke", "#f59e0b").attr("stroke-width", 1.5).attr("stroke-dasharray", "4 4").attr("d", lineFair).attr("pointer-events", "none");
 
-        // Add dotted lines for Upper/Lower bounds
-        const lineHigh = d3.line<PriceBandPoint>().defined(d => d.high !== null).x(d => xScale(new Date(d.date))).y(d => yScale(d.high!)).curve(d3.curveMonotoneX);
-        const lineLow = d3.line<PriceBandPoint>().defined(d => d.low !== null).x(d => xScale(new Date(d.date))).y(d => yScale(d.low!)).curve(d3.curveMonotoneX);
-        bandsG.append("path").datum(bandsData).attr("fill", "none").attr("stroke", "#9ca3af").attr("stroke-width", 1).attr("stroke-dasharray", "4 4").attr("d", lineHigh).attr("pointer-events", "none");
-        bandsG.append("path").datum(bandsData).attr("fill", "none").attr("stroke", "#9ca3af").attr("stroke-width", 1).attr("stroke-dasharray", "4 4").attr("d", lineLow).attr("pointer-events", "none");
+        const ensurePath = (group: d3.Selection<any, any, any, any>, className: string, styles: Record<string, string | number>) => {
+            let p = group.select<SVGPathElement>(`path.${className}`);
+            if (p.empty()) {
+                p = group.append("path").attr("class", className);
+                Object.entries(styles).forEach(([k, v]) => p.attr(k, v));
+            }
+            return p;
+        };
+
+        ensurePath(bandsG, "area-mid-high", { fill: "#fbbf24", opacity: 0.15, "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", areaMidHigh as any);
+        ensurePath(bandsG, "area-low-mid", { fill: "#fbbf24", opacity: 0.15, "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", areaLowMid as any);
+        ensurePath(bandsG, "line-fair", { fill: "none", stroke: "#f59e0b", "stroke-width": 1.5, "stroke-dasharray": "4 4", "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", lineFair as any);
+        ensurePath(bandsG, "line-high", { fill: "none", stroke: "#9ca3af", "stroke-width": 1, "stroke-dasharray": "4 4", "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", lineHigh as any);
+        ensurePath(bandsG, "line-low", { fill: "none", stroke: "#9ca3af", "stroke-width": 1, "stroke-dasharray": "4 4", "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", lineLow as any);
 
         // Fair Value & Bounds Labels with Collision Detection
         // Fair Value & Bounds & Price Labels with Collision Detection
@@ -212,11 +232,11 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
         ];
 
         if (data.length > 0) {
-            const legX = 16;
+            const legX = isMobile ? 10 : 16;
             const legY = 10;
-            const itemHeight = 18;
-            const padding = 10;
-            const boxWidth = 110;
+            const itemHeight = isMobile ? 14 : 18;
+            const padding = isMobile ? 6 : 10;
+            const boxWidth = isMobile ? 90 : 110;
             const boxHeight = legendItems.length * itemHeight + padding * 2;
 
             const lg = legendG.append("g").attr("transform", `translate(${legX}, ${legY})`);
@@ -252,7 +272,7 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
                 g.append("text")
                     .attr("x", 20)
                     .attr("y", 4) // visual alignment
-                    .attr("font-size", "11px")
+                    .attr("font-size", isMobile ? "9px" : "11px")
                     .attr("font-weight", "500")
                     .attr("font-family", "monospace")
                     .attr("fill", "#374151") // gray-700
@@ -261,9 +281,7 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
         }
 
         const priceG = mainG.select(".price-line");
-        priceG.selectAll("*").remove();
-        // Removed gradient area for cleaner look
-        priceG.append("path").datum(data).attr("fill", "none").attr("stroke", "#8b5cf6").attr("stroke-width", 2.5).attr("d", lineGen).attr("pointer-events", "none");
+        ensurePath(priceG, "current-price-line", { fill: "none", stroke: "#8b5cf6", "stroke-width": 2.5, "pointer-events": "none" }).datum(data).transition().duration(750).attr("d", lineGen as any);
 
         // --- Clear Old Annotations ---
         mainG.selectAll(".current-price-highlight, .y-axis-bounds-annotations").remove();
@@ -310,18 +328,30 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
                 };
                 animatePulse(pulseCircle);
 
-                // Label
-                const labelText = isExpensive ? `Premium: ${diff.toFixed(1)}% Expensive` : `Bargain: ${Math.abs(diff).toFixed(1)}% Cheaper`;
+                // Multi-line Label
+                const labelText = isExpensive ? "Premium" : "Bargain";
+                const subText = isExpensive ? `${diff.toFixed(1)}% Expensive` : `${Math.abs(diff).toFixed(1)}% Cheaper`;
                 const labelColor = isExpensive ? "#ef4444" : "#22c55e"; // red-500 : green-500
 
-                currentG.append("text")
+                const textElement = currentG.append("text")
                     .attr("x", 10)
                     .attr("y", -10)
                     .attr("font-size", "12px")
                     .attr("font-weight", "bold")
                     .attr("fill", labelColor)
-                    .style("filter", "drop-shadow(0 1px 1px rgb(0 0 0 / 0.1))")
+                    .style("filter", "drop-shadow(0 1px 1px rgb(0 0 0 / 0.1))");
+
+                textElement.append("tspan")
+                    .attr("x", 10)
+                    .attr("dy", "-0.2em")
                     .text(labelText);
+
+                textElement.append("tspan")
+                    .attr("x", 10)
+                    .attr("dy", "1.2em")
+                    .attr("font-size", "10px")
+                    .attr("font-weight", "600")
+                    .text(subText);
             }
 
             // --- Y-Axis Bound Annotations ---
@@ -683,6 +713,7 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
                 g = parent.append("g").attr("class", classSelector);
                 g.append("rect").attr("class", "track").attr("fill", "#f1f5f9");
                 const thumbG = g.append("g").attr("class", "thumb-group");
+                thumbG.append("rect").attr("class", "thumb-hit").attr("fill", "transparent").style("cursor", "grab");
                 thumbG.append("rect").attr("class", "thumb").attr("fill", "#cbd5e1").style("cursor", "grab");
                 thumbG.append("g").attr("class", "grips").attr("pointer-events", "none");
                 thumbG.append("rect").attr("class", "handle-start").attr("fill", "transparent");
@@ -717,6 +748,14 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
                     : `translate(0, ${startPos})`
                 );
 
+            const hitThickness = isMobile ? 48 : thickness;
+            const thumbHit = thumbG.select(".thumb-hit")
+                .attr("width", isH ? thumbSize : hitThickness)
+                .attr("height", isH ? hitThickness : thumbSize)
+                .attr("x", isH ? 0 : -(hitThickness - thickness) / 2)
+                .attr("y", isH ? -(hitThickness - thickness) / 2 : 0)
+                .attr("rx", hitThickness / 2);
+
             const thumb = thumbG.select(".thumb")
                 .attr("width", isH ? thumbSize : thickness)
                 .attr("height", isH ? thickness : thumbSize)
@@ -730,8 +769,8 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
                 gripG.append("path").attr("d", gripPath).attr("stroke", "white").attr("stroke-width", 1.5).attr("opacity", 0.8);
             }
 
-            // 4. Update Interaction
-            thumb.call((d3.drag<SVGRectElement, unknown>()
+            // 4. Update Interaction - Drag on hit area
+            thumbHit.call((d3.drag<SVGRectElement, unknown>()
                 .container(g.node() as any)
                 .on("start", function (event) {
                     const p = isH ? event.x : event.y;
@@ -760,16 +799,21 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
             const handleThickness = 12;
             const updateHandle = (type: 'start' | 'end') => {
                 const sel = thumbG.select(type === 'start' ? ".handle-start" : ".handle-end");
-                const xLoc = isH
-                    ? (type === 'start' ? 0 : thumbSize - handleThickness)
-                    : 0;
-                const yLoc = isH
-                    ? 0
-                    : (type === 'start' ? 0 : thumbSize - handleThickness);
-                const w = isH ? handleThickness : thickness;
-                const h = isH ? thickness : handleThickness;
+                const hThickness = isMobile ? 24 : handleThickness;
+                const hitThick = isMobile ? 48 : thickness;
 
-                sel.attr("x", xLoc).attr("y", yLoc).attr("width", w).attr("height", h)
+                const w = isH ? hThickness : hitThick;
+                const h = isH ? hitThick : hThickness;
+
+                const xAdjust = isH
+                    ? (type === 'start' ? 0 : thumbSize - hThickness)
+                    : -(hitThick - thickness) / 2;
+
+                const yAdjust = isH
+                    ? -(hitThick - thickness) / 2
+                    : (type === 'start' ? 0 : thumbSize - hThickness);
+
+                sel.attr("x", xAdjust).attr("y", yAdjust).attr("width", w).attr("height", h)
                     .style("cursor", isH ? "ew-resize" : "ns-resize")
                     .call((d3.drag<SVGRectElement, unknown>()
                         .container(g.node() as any)
@@ -815,10 +859,11 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
         const fullX: [number, number] = [xExt[0], oneMonthBuffer.getTime()];
         const fullY: [number, number] = [0, model.yMax * 1.5];
 
-        renderScrollbar(scrollG, "scrollbar-x", 0, innerHeight + 35, innerWidth, 16, 'horizontal', fullX, [currentXDomain[0].getTime(), currentXDomain[1].getTime()],
+        const scrollThickness = isMobile ? 8 : 16;
+        renderScrollbar(scrollG, "scrollbar-x", 0, innerHeight + 35, innerWidth, scrollThickness, 'horizontal', fullX, [currentXDomain[0].getTime(), currentXDomain[1].getTime()],
             (d) => onXDomainChange && onXDomainChange([new Date(d[0]), new Date(d[1])]));
 
-        renderScrollbar(scrollG, "scrollbar-y", -margin.left - 20, 0, innerHeight, 16, 'vertical', [fullY[1], fullY[0]], [currentYDomain[1], currentYDomain[0]],
+        renderScrollbar(scrollG, "scrollbar-y", -margin.left - 20, 0, innerHeight, scrollThickness, 'vertical', [fullY[1], fullY[0]], [currentYDomain[1], currentYDomain[0]],
             (d) => setYDomain([d[1], d[0]]));
 
 
@@ -895,12 +940,12 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
 
     return (
         <div className={`relative w-full ${className}`} ref={containerRef}>
-            {tooltip.visible && tooltip.data && (
+            {tooltip.visible && (
                 <div className="pointer-events-none absolute z-50 rounded-lg border border-gray-200 bg-white/90 p-3 shadow-lg backdrop-blur-sm dark:border-gray-800 dark:bg-black/90 text-sm" style={{ top: 0, left: 0, transform: `translate(${Math.min(tooltip.x + 15, containerRef.current!.clientWidth - 150)}px, ${tooltip.y}px)` }}>
-                    <div className="mb-1 font-mono text-gray-500">{tooltip.data.date}</div>
+                    {tooltip.data && <div className="mb-1 font-mono text-gray-500">{tooltip.data.date}</div>}
 
                     {/* Historical Case: Show Price & PE */}
-                    {typeof tooltip.data.close === 'number' ? (
+                    {tooltip.data && typeof tooltip.data.close === 'number' ? (
                         <>
                             <div className="flex items-center gap-2">
                                 <span className="text-violet-500 font-semibold">Price:</span>
@@ -916,15 +961,15 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
                     ) : (
                         /* Forecast Case: Show Fair Value & Gap */
                         <>
-                            {tooltip.data.mid !== null && (
+                            {tooltip.data && tooltip.data.mid !== null && (
                                 <div className="flex items-center gap-2">
                                     <span className="text-amber-500 font-semibold">Est. Fair Value:</span>
                                     <span className="font-mono font-bold">${tooltip.data.mid.toFixed(2)}</span>
                                 </div>
                             )}
-                            {tooltip.data.mid !== null && model.lastClose && (
+                            {tooltip.data && tooltip.data.mid !== null && model.lastClose && (
                                 (() => {
-                                    const gap = (tooltip.data.mid! - model.lastClose!.close) / model.lastClose!.close * 100;
+                                    const gap = (tooltip.data!.mid! - model.lastClose!.close) / model.lastClose!.close * 100;
                                     const isPos = gap >= 0;
                                     return (
                                         <div className="mt-1 border-t border-gray-100 pt-1 dark:border-gray-800">

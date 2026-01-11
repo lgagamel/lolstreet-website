@@ -43,10 +43,16 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
 
         const container = containerRef.current;
         const width = container.clientWidth;
+        const isMobile = width < 640;
         const h = height;
         // Margins for Scrollbars
         // Margins: Left Y-axis, No Scrollbars
-        const margin = { top: 20, right: 50, left: 60, bottom: 80 };
+        const margin = {
+            top: 20,
+            right: isMobile ? 10 : 50,
+            left: isMobile ? 40 : 60,
+            bottom: isMobile ? 60 : 80
+        };
         const innerWidth = width - margin.left - margin.right;
         const innerHeight = h - margin.top - margin.bottom;
 
@@ -72,7 +78,7 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
 
             const mainG = svg.append("g").attr("class", "main-g");
             mainG.append("rect").attr("class", "zoom-capture").attr("fill", "transparent");
-            mainG.append("g").attr("class", "grid-lines opacity-10");
+            mainG.append("g").attr("class", "grid-lines opacity-5");
             mainG.append("g").attr("class", "bands-area").attr("clip-path", "url(#clip-pe)").style("pointer-events", "none");
             mainG.append("g").attr("class", "pe-line").attr("clip-path", "url(#clip-pe)").style("pointer-events", "none");
 
@@ -89,7 +95,7 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
         const svg = svgRef.current!;
         svg.attr("width", width).attr("height", h).attr("viewBox", `0 0 ${width} ${h}`);
         svg.select("#clip-pe rect").attr("width", innerWidth).attr("height", innerHeight);
-        const mainG = svg.select(".main-g").attr("transform", `translate(${margin.left},${margin.top})`);
+        const mainG = svg.select<SVGGElement>(".main-g").attr("transform", `translate(${margin.left},${margin.top})`);
 
         // Default X domain: ±3 months from today (6-month window)
         const calculateDefaultXDomain = () => {
@@ -142,30 +148,48 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
         const xScale = d3.scaleTime().domain(currentXDomain).range([0, innerWidth]);
         const yScale = d3.scaleLinear().domain(currentYDomain).range([innerHeight, 0]);
 
-        const xAxis = d3.axisBottom(xScale).tickSize(0).tickPadding(10);
+        const xAxis = d3.axisBottom(xScale).ticks(isMobile ? 3 : 6).tickSize(0).tickPadding(10);
         // Changed to Axis Left
-        const yAxis = d3.axisLeft(yScale).ticks(6).tickSize(0).tickPadding(10);
+        const yAxis = d3.axisLeft(yScale).ticks(isMobile ? 4 : 6).tickSize(0).tickPadding(10);
 
         mainG.select<SVGGElement>(".axis-x")
             .attr("transform", `translate(0,${innerHeight})`)
+            .transition().duration(750)
             .call(xAxis)
-            .attr("class", "axis-x text-xs font-mono text-gray-500")
-            .select(".domain").remove();
+            .on("end", function () {
+                d3.select(this).attr("class", "axis-x text-xs font-mono text-gray-500").select(".domain").remove();
+            });
 
         mainG.select<SVGGElement>(".axis-y")
-            .attr("transform", `translate(0, 0)`)
+            .transition().duration(750)
             .call(yAxis)
-            .attr("class", "axis-y text-xs font-mono text-gray-500")
-            .select(".domain").remove();
+            .on("end", function () {
+                d3.select(this).attr("class", "axis-y text-xs font-mono text-gray-500").select(".domain").remove();
+            });
 
-        const yAxisGrid = d3.axisLeft(yScale).tickSize(-innerWidth).tickFormat(() => "").ticks(6);
-        mainG.select<SVGGElement>(".grid-lines").call(yAxisGrid).style("stroke-dasharray", "4 4").selectAll("line").attr("stroke", "currentColor");
+        const yAxisGrid = d3.axisLeft(yScale).tickSize(-innerWidth).tickFormat(() => "").ticks(isMobile ? 4 : 6);
+        mainG.select<SVGGElement>(".grid-lines")
+            .transition().duration(750)
+            .call(yAxisGrid)
+            .style("stroke-dasharray", "4 4")
+            .selectAll("line").attr("stroke", "currentColor");
         mainG.select(".grid-lines").select(".domain").remove();
 
         // No change needed for removal as no HTML legend exists. Code for context.
 
+        // Content
+        const latestPEPoint = [...data].reverse().find(d => d.pe_ratio !== null);
+        const lastDate = latestPEPoint ? new Date(latestPEPoint.date) : new Date();
+        const oneYearAgo = new Date(lastDate);
+        oneYearAgo.setFullYear(lastDate.getFullYear() - 1);
+
+        // Filter points for bands (Last 1 year only)
+        const bandsData = model.points.filter(d => {
+            const date = new Date(d.date);
+            return date >= oneYearAgo;
+        });
+
         const lineGenerator = d3.line<PEBandPoint>().defined((d) => d.pe_ratio !== null).curve(d3.curveMonotoneX).x((d) => xScale(new Date(d.date))).y((d) => yScale(d.pe_ratio!));
-        const areaGenerator = d3.area<PEBandPoint>().defined((d) => d.pe_ratio !== null).curve(d3.curveMonotoneX).x((d) => xScale(new Date(d.date))).y0(innerHeight).y1((d) => yScale(d.pe_ratio!));
 
         // Area generators for shading
         const { low, mid, high } = model.assumed;
@@ -181,51 +205,47 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
             .y0(d => yScale(low!))
             .y1(d => yScale(mid!));
 
-        // Filter data for bands (Last 1 year only)
-        const today = new Date();
-        const oneYearAgo = new Date(today);
-        oneYearAgo.setFullYear(today.getFullYear() - 1);
+        const bandsG = mainG.select(".bands-area");
 
-        const bandsData = data.filter(d => {
-            const date = new Date(d.date);
-            return date >= oneYearAgo;
-        });
+        const ensurePath = (group: d3.Selection<any, any, any, any>, className: string, styles: Record<string, string | number>) => {
+            let p = group.select<SVGPathElement>(`path.${className}`);
+            if (p.empty()) {
+                p = group.append("path").attr("class", className);
+                Object.entries(styles).forEach(([k, v]) => p.attr(k, v));
+            }
+            return p;
+        };
 
-        const bandsArea = mainG.select(".bands-area");
-        bandsArea.selectAll("*").remove(); // Clear previous bands
-
-        // Shaded Areas
         if (high !== null && mid !== null) {
-            bandsArea.append("path").datum(bandsData).attr("fill", "#fbbf24").attr("opacity", 0.15).attr("d", areaMidHigh).attr("pointer-events", "none");
+            ensurePath(bandsG, "area-mid-high", { fill: "#fbbf24", opacity: 0.15, "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", areaMidHigh as any);
         }
         if (low !== null && mid !== null) {
-            bandsArea.append("path").datum(bandsData).attr("fill", "#fbbf24").attr("opacity", 0.15).attr("d", areaLowMid).attr("pointer-events", "none");
+            ensurePath(bandsG, "area-low-mid", { fill: "#fbbf24", opacity: 0.15, "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", areaLowMid as any);
         }
 
-        // Dotted Lines for Mid/High/Low
         if (mid !== null) {
             const lineMid = d3.line<PEBandPoint>().x(d => xScale(new Date(d.date))).y(() => yScale(mid!));
-            bandsArea.append("path").datum(bandsData).attr("fill", "none").attr("stroke", "#f59e0b").attr("stroke-width", 1.5).attr("stroke-dasharray", "4 4").attr("d", lineMid).attr("pointer-events", "none");
+            ensurePath(bandsG, "line-fair", { fill: "none", stroke: "#f59e0b", "stroke-width": 1.5, "stroke-dasharray": "4 4", "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", lineMid as any);
         }
         if (high !== null) {
             const lineHigh = d3.line<PEBandPoint>().x(d => xScale(new Date(d.date))).y(() => yScale(high!));
-            bandsArea.append("path").datum(bandsData).attr("fill", "none").attr("stroke", "#9ca3af").attr("stroke-width", 1).attr("stroke-dasharray", "4 4").attr("d", lineHigh).attr("pointer-events", "none");
+            ensurePath(bandsG, "line-high", { fill: "none", stroke: "#9ca3af", "stroke-width": 1, "stroke-dasharray": "4 4", "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", lineHigh as any);
         }
         if (low !== null) {
             const lineLow = d3.line<PEBandPoint>().x(d => xScale(new Date(d.date))).y(() => yScale(low!));
-            bandsArea.append("path").datum(bandsData).attr("fill", "none").attr("stroke", "#9ca3af").attr("stroke-width", 1).attr("stroke-dasharray", "4 4").attr("d", lineLow).attr("pointer-events", "none");
+            ensurePath(bandsG, "line-low", { fill: "none", stroke: "#9ca3af", "stroke-width": 1, "stroke-dasharray": "4 4", "pointer-events": "none" }).datum(bandsData).transition().duration(750).attr("d", lineLow as any);
         }
 
-        const peLineGroup = mainG.select(".pe-line");
-        peLineGroup.selectAll("*").remove(); // Clear previous PE line
-        // PE Line
-        peLineGroup.append("path").datum(data).attr("class", "pe-line-path").attr("fill", "none").attr("stroke", "#3b82f6").attr("stroke-width", 2.5).attr("d", lineGenerator);
+        const peG = mainG.select(".pe-line");
+        ensurePath(peG, "current-pe-line", { fill: "none", stroke: "#3b82f6", "stroke-width": 2.5, "pointer-events": "none" }).datum(model.points).transition().duration(750).attr("d", lineGenerator as any);
 
         // --- Clear Old Annotations ---
         mainG.selectAll(".current-pe-highlight, .y-axis-bounds-annotations").remove();
 
+        // --- Annotations & Calculation Context ---
+        // (Calculated above for bandsData)
+
         // --- Current PE Highlight ---
-        const latestPEPoint = [...data].reverse().find(d => d.pe_ratio !== null);
         if (latestPEPoint) {
             const px = xScale(new Date(latestPEPoint.date));
             const py = yScale(latestPEPoint.pe_ratio!);
@@ -233,10 +253,6 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
             // Only render if visible within Y range
             if (py >= 0 && py <= innerHeight) {
                 // Calculate 1-year median PE
-                const lastDate = new Date(latestPEPoint.date);
-                const oneYearAgo = new Date(lastDate);
-                oneYearAgo.setFullYear(lastDate.getFullYear() - 1);
-
                 const oneYearData = data.filter(d => {
                     const dDate = new Date(d.date);
                     return dDate >= oneYearAgo && dDate <= lastDate && d.pe_ratio !== null;
@@ -279,18 +295,30 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
                     };
                     animatePulse(pulseCircle);
 
-                    // Label
-                    const labelText = isExpensive ? `${diff.toFixed(1)}% More expensive than usual` : `${Math.abs(diff).toFixed(1)}% Cheaper than usual`;
+                    // Multi-line Label
+                    const line1 = isExpensive ? `${diff.toFixed(1)}% More expensive` : `${Math.abs(diff).toFixed(1)}% Cheaper`;
+                    const line2 = "than usual";
                     const labelColor = isExpensive ? "#ef4444" : "#22c5e0"; // red-500 : green-500
 
-                    currentPEG.append("text")
+                    const textElement = currentPEG.append("text")
                         .attr("x", 10)
                         .attr("y", -10)
                         .attr("font-size", "12px")
                         .attr("font-weight", "bold")
                         .attr("fill", labelColor)
-                        .style("filter", "drop-shadow(0 1px 1px rgb(0 0 0 / 0.1))")
-                        .text(labelText);
+                        .style("filter", "drop-shadow(0 1px 1px rgb(0 0 0 / 0.1))");
+
+                    textElement.append("tspan")
+                        .attr("x", 10)
+                        .attr("dy", "-0.2em")
+                        .text(line1);
+
+                    textElement.append("tspan")
+                        .attr("x", 10)
+                        .attr("dy", "1.2em")
+                        .attr("font-size", "10px")
+                        .attr("font-weight", "600")
+                        .text(line2);
                 }
             }
 
@@ -308,11 +336,11 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
         ];
 
         if (data.length > 0) {
-            const legX = 16;
+            const legX = isMobile ? 8 : 16;
             const legY = 10;
-            const itemHeight = 18;
-            const padding = 10;
-            const boxWidth = 90;
+            const itemHeight = isMobile ? 14 : 18;
+            const padding = isMobile ? 6 : 10;
+            const boxWidth = isMobile ? 75 : 90;
             const boxHeight = legendItems.length * itemHeight + padding * 2;
 
             const lg = legendG.append("g").attr("transform", `translate(${legX}, ${legY})`);
@@ -346,9 +374,9 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
 
                 // Text
                 g.append("text")
-                    .attr("x", 20)
+                    .attr("x", isMobile ? 16 : 20)
                     .attr("y", 4) // visual alignment
-                    .attr("font-size", "11px")
+                    .attr("font-size", isMobile ? "9px" : "11px")
                     .attr("font-weight", "500")
                     .attr("font-family", "monospace")
                     .attr("fill", "#374151") // gray-700
@@ -560,6 +588,7 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
                 g = parent.append("g").attr("class", classSelector);
                 g.append("rect").attr("class", "track").attr("fill", "#f1f5f9");
                 const thumbG = g.append("g").attr("class", "thumb-group");
+                thumbG.append("rect").attr("class", "thumb-hit").attr("fill", "transparent").style("cursor", "grab");
                 thumbG.append("rect").attr("class", "thumb").attr("fill", "#cbd5e1").style("cursor", "grab");
                 thumbG.append("g").attr("class", "grips").attr("pointer-events", "none");
                 thumbG.append("rect").attr("class", "handle-start").attr("fill", "transparent");
@@ -594,6 +623,14 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
                     : `translate(0, ${startPos})`
                 );
 
+            const hitThickness = isMobile ? 48 : thickness;
+            const thumbHit = thumbG.select(".thumb-hit")
+                .attr("width", isH ? thumbSize : hitThickness)
+                .attr("height", isH ? hitThickness : thumbSize)
+                .attr("x", isH ? 0 : -(hitThickness - thickness) / 2)
+                .attr("y", isH ? -(hitThickness - thickness) / 2 : 0)
+                .attr("rx", hitThickness / 2);
+
             const thumb = thumbG.select(".thumb")
                 .attr("width", isH ? thumbSize : thickness)
                 .attr("height", isH ? thickness : thumbSize)
@@ -607,8 +644,8 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
                 gripG.append("path").attr("d", gripPath).attr("stroke", "white").attr("stroke-width", 1.5).attr("opacity", 0.8);
             }
 
-            // 4. Update Interaction
-            thumb.call((d3.drag<SVGRectElement, unknown>()
+            // 4. Update Interaction - Drag on hit area
+            thumbHit.call((d3.drag<SVGRectElement, unknown>()
                 .container(g.node() as any)
                 .on("start", function (event) {
                     const p = isH ? event.x : event.y;
@@ -637,16 +674,21 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
             const handleThickness = 12;
             const updateHandle = (type: 'start' | 'end') => {
                 const sel = thumbG.select(type === 'start' ? ".handle-start" : ".handle-end");
-                const xLoc = isH
-                    ? (type === 'start' ? 0 : thumbSize - handleThickness)
-                    : 0;
-                const yLoc = isH
-                    ? 0
-                    : (type === 'start' ? 0 : thumbSize - handleThickness);
-                const w = isH ? handleThickness : thickness;
-                const h = isH ? thickness : handleThickness;
+                const hThickness = isMobile ? 24 : handleThickness;
+                const hitThick = isMobile ? 48 : thickness;
 
-                sel.attr("x", xLoc).attr("y", yLoc).attr("width", w).attr("height", h)
+                const w = isH ? hThickness : hitThick;
+                const h = isH ? hitThick : hThickness;
+
+                const xAdjust = isH
+                    ? (type === 'start' ? 0 : thumbSize - hThickness)
+                    : -(hitThick - thickness) / 2;
+
+                const yAdjust = isH
+                    ? -(hitThick - thickness) / 2
+                    : (type === 'start' ? 0 : thumbSize - hThickness);
+
+                sel.attr("x", xAdjust).attr("y", yAdjust).attr("width", w).attr("height", h)
                     .style("cursor", isH ? "ew-resize" : "ns-resize")
                     .call((d3.drag<SVGRectElement, unknown>()
                         .container(g.node() as any)
@@ -686,10 +728,11 @@ export default function PEChartD3({ model, height = 340, className = "", onUpdat
         const fullX: [number, number] = [xExt[0], maxDate.getTime()];
         const fullY: [number, number] = [0, model.yMax * 1.5];
 
-        renderScrollbar(scrollG, "scrollbar-x", 0, innerHeight + 35, innerWidth, 16, 'horizontal', fullX, [currentXDomain[0].getTime(), currentXDomain[1].getTime()],
+        const scrollThickness = isMobile ? 8 : 16;
+        renderScrollbar(scrollG, "scrollbar-x", 0, innerHeight + 35, innerWidth, scrollThickness, 'horizontal', fullX, [currentXDomain[0].getTime(), currentXDomain[1].getTime()],
             (d) => onXDomainChange && onXDomainChange([new Date(d[0]), new Date(d[1])]));
 
-        renderScrollbar(scrollG, "scrollbar-y", -margin.left - 20, 0, innerHeight, 16, 'vertical', [fullY[1], fullY[0]], [currentYDomain[1], currentYDomain[0]],
+        renderScrollbar(scrollG, "scrollbar-y", -margin.left - 20, 0, innerHeight, scrollThickness, 'vertical', [fullY[1], fullY[0]], [currentYDomain[1], currentYDomain[0]],
             (d) => setYDomain([d[1], d[0]]));
 
         // Disable Zoom (Keep Tooltip)
