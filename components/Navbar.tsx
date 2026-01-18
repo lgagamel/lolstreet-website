@@ -2,13 +2,14 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 
 export default function Navbar() {
     const [isOpen, setIsOpen] = useState(false);
 
-    const navLinks = [
+    const navLinks: { href: string; label: string; badge?: string }[] = [
         { href: "/", label: "Home" },
-        { href: "/tools/compare", label: "Price Race", badge: "NEW" },
+        { href: "/tools/compare", label: "Price Race" },
         { href: "/tools/time-machine", label: "Time Machine ⏳" },
         { href: "/tools/compound-interest", label: "Investment Growth 💰" },
         { href: "/tools/dictionary", label: "Simple Dictionary 📚" },
@@ -18,10 +19,15 @@ export default function Navbar() {
         <header className="bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 sticky top-0 z-40">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
                 <div className="flex items-center gap-8">
+
                     <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-                        <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-indigo-500/20">
-                            L
-                        </div>
+                        <Image
+                            src="/lolstreet-logo.png"
+                            alt="LOLStreet Logo"
+                            width={32}
+                            height={32}
+                            className="rounded-lg"
+                        />
                         <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-400">
                             LOLStreet
                         </span>

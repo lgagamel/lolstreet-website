@@ -195,8 +195,13 @@ export default function StockDashboard({ series, finance, forecast, summary, new
         >
             <div role="heading" aria-level={2} className="text-xl font-bold flex items-center gap-1.5 group-hover:opacity-80 transition-opacity">
                 <span className={`w-1 h-6 ${colorClass} rounded-full flex-shrink-0`}></span>
-                <span className="whitespace-nowrap">{title}</span>
-                {tooltip && <InfoTooltip>{tooltip}</InfoTooltip>}
+                {tooltip ? (
+                    <InfoTooltip label={<span className="whitespace-nowrap">{title}</span>}>
+                        {tooltip}
+                    </InfoTooltip>
+                ) : (
+                    <span className="whitespace-nowrap">{title}</span>
+                )}
                 <svg
                     className={`w-5 h-5 text-gray-400 transition-transform duration-200 flex-shrink-0 ${visibility[key] ? 'rotate-180' : ''}`}
                     fill="none" viewBox="0 0 24 24" stroke="currentColor"
