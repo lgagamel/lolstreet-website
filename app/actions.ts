@@ -206,3 +206,82 @@ export async function fetchFinancialMetrics(ticker: string): Promise<FinancialMe
         marketCap
     };
 }
+
+export interface FuturePEToolData {
+    ticker: string;
+    price: number;
+    currentEPS: number;
+    growthRate: number; // YoY growth as percentage (e.g., 15.5 for 15.5%)
+    nextEarningsDate?: string; // ISO Date string
+    currentDate?: string; // ISO Date string for the price
+    lastReportDate?: string; // ISO Date string for last EPS
+}
+
+export async function fetchFuturePEToolData(ticker: string): Promise<FuturePEToolData | null> {
+    const { getRankings, getFinanceData, getFinanceForecast } = await import("@/lib/api");
+
+    // 1. Get Summary Data (Price, Growth)
+    const rankings = await getRankings();
+    const summary = rankings.find(r => r.ticker.toUpperCase() === ticker.toUpperCase());
+
+    // We need price at minimum. Growth can be defaulted if missing.
+    if (!summary || !summary.current_close) return null;
+
+    const price = summary.current_close || 0;
+    // 'eps_yoy_growth_avg_last4q_pct' maps to 'eps_ttm_yoy_pct' in getRankings
+    const growthRate = summary.eps_yoy_growth_avg_last4q_pct || 0;
+    const currentDate = summary.current_date; // Available from summary
+
+    // 2. Get Finance Data (Current TTM EPS)
+    // Filter to only include rows with actual reported EPS to avoid including future estimates/empty rows in TTM sum
+    const financeDataRaw = await getFinanceData(ticker);
+    const financeData = financeDataRaw?.filter(r => r.reportedEPS !== null && Number.isFinite(r.reportedEPS)) || [];
+
+    // Sort by date just in case
+    financeData.sort((a, b) => new Date(a.reportedDate).getTime() - new Date(b.reportedDate).getTime());
+
+    let currentEPS = 0;
+    let lastReportDate: string | undefined = undefined;
+
+    if (financeData.length >= 4) {
+        // Get last 4 quarters of REPORTED data
+        const last4Quarters = financeData.slice(-4);
+        for (const quarter of last4Quarters) {
+            currentEPS += (quarter.reportedEPS || 0);
+        }
+        // Last row is the most recent report
+        lastReportDate = financeData[financeData.length - 1].reportedDate;
+    } else if (summary.current_pe && summary.current_pe > 0) {
+        // Fallback
+        currentEPS = price / summary.current_pe;
+    }
+
+    // 3. Get Forecast Data (Next Earnings Date)
+    const forecastRaw = await getFinanceForecast(ticker);
+    let nextEarningsDate: string | undefined = undefined;
+
+    if (forecastRaw && forecastRaw.length > 0) {
+        // Find the first forecast with a reportedDate in the future
+        // OR simply the first row if the file is sorted by date? 
+        // Typically forecast files might be sorted. Let's filter for future dates.
+        const today = new Date();
+        const futureForecasts = forecastRaw.filter(r => {
+            const d = new Date(r.reportedDate);
+            return d > today;
+        }).sort((a, b) => new Date(a.reportedDate).getTime() - new Date(b.reportedDate).getTime());
+
+        if (futureForecasts.length > 0) {
+            nextEarningsDate = futureForecasts[0].reportedDate;
+        }
+    }
+
+    return {
+        ticker: ticker.toUpperCase(),
+        price,
+        currentEPS,
+        growthRate,
+        nextEarningsDate,
+        currentDate,
+        lastReportDate
+    };
+}

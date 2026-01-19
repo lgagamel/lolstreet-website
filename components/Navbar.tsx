@@ -9,7 +9,8 @@ export default function Navbar() {
 
     const navLinks: { href: string; label: string; badge?: string }[] = [
         { href: "/", label: "Home" },
-        { href: "/tools/compare", label: "Price Race" },
+        { href: "/tools/future-pe", label: "Future PE 🔮" },
+        { href: "/tools/compare", label: "Price Race 🏎️" },
         { href: "/tools/time-machine", label: "Time Machine ⏳" },
         { href: "/tools/compound-interest", label: "Investment Growth 💰" },
         { href: "/tools/dictionary", label: "Simple Dictionary 📚" },

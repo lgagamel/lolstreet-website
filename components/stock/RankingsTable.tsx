@@ -24,6 +24,7 @@ type Props = {
     onQueryChange: (q: string) => void;
     filters: FilterState;
     onFilterChange: (filters: FilterState) => void;
+    hideSearchBar?: boolean;
 };
 
 type SortState = {
@@ -52,7 +53,8 @@ function fmtPrice(v: number) {
     return <span className="font-mono text-gray-700 dark:text-gray-300">${v.toFixed(2)}</span>;
 }
 
-export default function RankingsTable({ rows, query, onQueryChange, filters, onFilterChange }: Props) {
+export default function RankingsTable(props: Props) {
+    const { rows, query, onQueryChange, filters, onFilterChange, hideSearchBar } = props;
     const [sort, setSort] = useState<SortState>({ metric: "market_cap", dir: "desc" });
     const [showFilters, setShowFilters] = useState(false);
     const [showMobileSort, setShowMobileSort] = useState(false);
@@ -211,19 +213,21 @@ export default function RankingsTable({ rows, query, onQueryChange, filters, onF
                         </button>
                     </div>
 
-                    <div className="relative flex-1">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <svg className="h-4 w-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-                            </svg>
+                    {!props.hideSearchBar && (
+                        <div className="relative flex-1">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg className="h-4 w-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+                                </svg>
+                            </div>
+                            <input
+                                value={query}
+                                onChange={(e) => onQueryChange(e.target.value)}
+                                placeholder="Search ticker..."
+                                className="pl-9 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none w-full transition-all"
+                            />
                         </div>
-                        <input
-                            value={query}
-                            onChange={(e) => onQueryChange(e.target.value)}
-                            placeholder="Search ticker..."
-                            className="pl-9 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none w-full transition-all"
-                        />
-                    </div>
+                    )}
                 </div>
             </div>
 
