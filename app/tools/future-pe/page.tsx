@@ -177,6 +177,42 @@ export default function FuturePEMainPage() {
         handleAssumptionChange(scenarioId, index, 'growthRate', newAnnualGrowth.toString());
     };
 
+    const handleGrowthAdjustment = (scenarioId: string, delta: number) => {
+        setScenarios(prev => prev.map(scenario => {
+            if (scenario.id !== scenarioId) return scenario;
+
+            const newAssumptions = [...scenario.assumptions];
+            const data = scenario.data;
+            let current_eps = data.currentEPS; // Starting point
+
+            // Iterate and update all
+            for (let i = 0; i < newAssumptions.length; i++) {
+                const item = { ...newAssumptions[i] };
+
+                // Get current annual growth
+                const currentQ = item.growthRate / 100;
+                const currentAnn = (Math.pow(1 + currentQ, 4) - 1) * 100;
+
+                // Apply delta
+                const newAnn = currentAnn + delta;
+
+                // Convert back to Quarterly
+                const newQ = (Math.pow(1 + newAnn / 100, 0.25) - 1) * 100;
+                item.growthRate = newQ;
+
+                // Re-calculate EPS based on prev (either initial data or prev item)
+                const prevEPS = i === 0 ? current_eps : newAssumptions[i - 1].eps;
+                item.eps = prevEPS * (1 + newQ / 100);
+
+                newAssumptions[i] = item;
+            }
+            // Note: Since we updated sequentially, we don't need a second pass for cascading,
+            // because loop index i references the *already updated* newAssumptions[i-1].eps
+
+            return { ...scenario, assumptions: newAssumptions };
+        }));
+    };
+
 
     // Derived Scenarios for Comp Charts and Render
     // We calculate projectionPoints on fly (in render map) or memoize?
@@ -239,10 +275,10 @@ export default function FuturePEMainPage() {
                 {/* Header */}
                 <div className="text-center space-y-2">
                     <h1 className="text-3xl md:text-4xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-green-600">
-                        Future PE Explorer
+                        Future PE Simulator
                     </h1>
                     <p className="text-sm md:text-base text-gray-500 max-w-2xl mx-auto">
-                        Simulate and compare PE ratio evolution across multiple stocks.
+                        What will happen to the PE ratio if the current price continues?
                     </p>
                     <div className="flex flex-wrap gap-2 justify-center text-xs text-orange-600 dark:text-orange-400 mt-2">
                         <span className="bg-orange-100 dark:bg-orange-900/30 px-2 py-1 rounded">⚠️ Future earnings dates are estimated</span>
@@ -296,7 +332,7 @@ export default function FuturePEMainPage() {
                                 <h2 className="text-2xl font-bold flex items-center gap-3">
                                     <span className="w-4 h-4 rounded-full" style={{ backgroundColor: s.color }} />
                                     {s.ticker}
-                                    <span className="text-sm font-normal text-gray-400 ml-2">Based on ${s.data.price.toFixed(2)} price</span>
+                                    <span className="text-sm font-normal text-gray-400 ml-2">Assumes price stays at ${s.data.price.toFixed(2)}</span>
                                 </h2>
                                 <div className="flex gap-2">
                                     <button
@@ -355,19 +391,41 @@ export default function FuturePEMainPage() {
                                     {/* Table Header */}
                                     <div className="p-3 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 rounded-t-xl">
                                         <h3 className="font-semibold text-sm">Assumptions</h3>
-                                        <div className="flex bg-gray-200 dark:bg-gray-700 rounded-lg p-1 text-[10px] font-medium">
-                                            <button
-                                                className={`px-2 py-1 rounded transition-all ${s.editMode === 'growth' ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600' : 'text-gray-500'}`}
-                                                onClick={() => handleEditModeToggle(s.id, 'growth')}
-                                            >
-                                                Growth
-                                            </button>
-                                            <button
-                                                className={`px-2 py-1 rounded transition-all ${s.editMode === 'eps' ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600' : 'text-gray-500'}`}
-                                                onClick={() => handleEditModeToggle(s.id, 'eps')}
-                                            >
-                                                EPS
-                                            </button>
+                                        <div className="flex gap-2 items-center">
+                                            {s.editMode === 'growth' && (
+                                                <div className="flex bg-gray-200 dark:bg-gray-700 rounded-lg p-0.5 text-[10px] items-center mr-2">
+                                                    <span className="px-1.5 text-gray-500 uppercase font-semibold">Adj All:</span>
+                                                    <button
+                                                        onClick={() => handleGrowthAdjustment(s.id, -1)}
+                                                        className="px-2 py-0.5 hover:bg-white dark:hover:bg-gray-600 rounded text-gray-700 dark:text-gray-300 transition-colors"
+                                                        title="Decrease all by 1%"
+                                                    >
+                                                        -1%
+                                                    </button>
+                                                    <div className="w-px h-3 bg-gray-300 dark:bg-gray-600 mx-0.5"></div>
+                                                    <button
+                                                        onClick={() => handleGrowthAdjustment(s.id, 1)}
+                                                        className="px-2 py-0.5 hover:bg-white dark:hover:bg-gray-600 rounded text-gray-700 dark:text-gray-300 transition-colors"
+                                                        title="Increase all by 1%"
+                                                    >
+                                                        +1%
+                                                    </button>
+                                                </div>
+                                            )}
+                                            <div className="flex bg-gray-200 dark:bg-gray-700 rounded-lg p-1 text-[10px] font-medium">
+                                                <button
+                                                    className={`px-2 py-1 rounded transition-all ${s.editMode === 'growth' ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600' : 'text-gray-500'}`}
+                                                    onClick={() => handleEditModeToggle(s.id, 'growth')}
+                                                >
+                                                    Growth
+                                                </button>
+                                                <button
+                                                    className={`px-2 py-1 rounded transition-all ${s.editMode === 'eps' ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600' : 'text-gray-500'}`}
+                                                    onClick={() => handleEditModeToggle(s.id, 'eps')}
+                                                >
+                                                    EPS
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                     {/* Table Body */}
