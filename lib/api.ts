@@ -44,11 +44,11 @@ function toNumberOrNaN(s: string | undefined): number {
 }
 
 // Minimal CSV parser: assumes no quoted commas in fields
-function parseCSV(text: string): { headers: string[]; rows: string[][] } {
-    const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+function parseCSV(text: string) {
+    const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
     if (lines.length === 0) return { headers: [], rows: [] };
-    const headers = lines[0].split(",").map((h) => h.trim());
-    const rows = lines.slice(1).map((line) => line.split(","));
+    const headers = lines[0].split(",").map(h => h.trim());
+    const rows = lines.slice(1).map((line) => line.split(",").map(c => c.trim()));
     return { headers, rows };
 }
 
@@ -144,7 +144,8 @@ export async function getStockSeries(ticker: string): Promise<StockDailyRow[]> {
             pe_band_window_start: clean(r[it("pe_band_window_start")]),
             pe_band_window_end: clean(r[it("pe_band_window_end")]),
         }))
-        .filter((x) => x.date.length > 0);
+        .filter((x) => x.date.length > 0)
+        .sort((a, b) => a.date.localeCompare(b.date));
 
     return out;
 }

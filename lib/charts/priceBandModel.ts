@@ -35,7 +35,8 @@ export function buildPriceBandModel(rows: StockDailyRow[]): PriceBandModel {
             high: finiteOrNull(r.price_est_high),
             pe_ratio: finiteOrNull(r.pe_ratio),
         }))
-        .filter((p) => p.date);
+        .filter((p) => p.date)
+        .sort((a, b) => a.date.localeCompare(b.date));
 
     // y-range from all non-null series values
     const ys: number[] = [];
@@ -68,12 +69,12 @@ export function buildPriceBandModel(rows: StockDailyRow[]): PriceBandModel {
         }
     }
 
-    // NEW: splitDate = last date with actual close (from original rows)
+    // NEW: splitDate = last date with actual close (from sorted points)
     let splitDate: string | null = null;
-    for (let i = rows.length - 1; i >= 0; i--) {
-        const c = rows[i].close;
-        if (typeof c === "number" && Number.isFinite(c)) {
-            splitDate = rows[i].date;
+    for (let i = points.length - 1; i >= 0; i--) {
+        const c = points[i].close;
+        if (c !== null) {
+            splitDate = points[i].date;
             break;
         }
     }

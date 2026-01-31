@@ -259,6 +259,31 @@ export default function PriceChartD3({ model, height = 400, className = "", xDom
         const priceG = mainG.select(".price-line");
         ensurePath(priceG, "current-price-line", { fill: "none", stroke: "#8b5cf6", "stroke-width": 2.5, "pointer-events": "none" }).datum(data).transition().duration(tDuration).attr("d", lineGen as any);
 
+        // --- Today / Split Line ---
+        mainG.select(".today-marker").remove();
+        if (model.splitDate) {
+            const splitDate = new Date(model.splitDate);
+            const tx = xScale(splitDate);
+
+            if (tx >= 0 && tx <= innerWidth) {
+                const todayG = mainG.append("g").attr("class", "today-marker").attr("transform", `translate(${tx}, 0)`);
+                todayG.append("line")
+                    .attr("y1", 0)
+                    .attr("y2", innerHeight)
+                    .attr("stroke", "#6b7280")
+                    .attr("stroke-width", 1)
+                    .attr("stroke-dasharray", "4 4");
+
+                todayG.append("text")
+                    .attr("y", -5)
+                    .attr("text-anchor", "middle")
+                    .attr("font-size", "10px")
+                    .attr("fill", "#6b7280")
+                    .attr("font-weight", "600")
+                    .text("Today");
+            }
+        }
+
         // --- Clear Old Annotations ---
         mainG.selectAll(".current-price-highlight, .y-axis-bounds-annotations").remove();
 
